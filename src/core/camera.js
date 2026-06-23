@@ -31,8 +31,16 @@ export function createCamera(domElement) {
   controls.enableDamping = true; // smooth, weighty feel
   controls.dampingFactor = 0.05;
   controls.maxPolarAngle = Math.PI * 0.495; // don't let the user go below ground
-  controls.minDistance = 10;
-  controls.maxDistance = 250;
+  controls.minDistance = 5;
+  controls.maxDistance = 350;
+
+  // Full free movement in "Free Explore" mode: right-click/drag (or arrow keys)
+  // pans the focus point anywhere in the stadium — no central fulcrum.
+  controls.enablePan = true;
+  controls.screenSpacePanning = true; // pan in the screen plane, feels natural
+  controls.panSpeed = 1.2;
+  controls.keyPanSpeed = 12;
+  controls.listenToKeyEvents(window); // arrow keys move the focus
   controls.update();
 
   return { camera, controls };

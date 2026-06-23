@@ -3,26 +3,56 @@ import GUI from "lil-gui";
 /**
  * lil-gui control panel (CLAUDE.md §3, MVP requirement).
  *
- * Wires user interaction to the sprint event and the camera rig.
+ * The user may: choose a Director (camera) mode, start/reset the sports events,
+ * and toggle the opening ceremony.
  *
  * @param {{ sprint: import("../events/sprint.js").SprintEvent,
- *           cameraRig: import("../cameras/cameraRig.js").CameraRig,
+ *           longJump?: import("../events/longJump.js").LongJumpEvent,
+ *           football?: import("../events/football.js").FootballEvent,
  *           ceremony?: import("../events/ceremony.js").Ceremony,
- *           lighting?: import("../lighting/lighting.js").createLighting,
- *           renderer?: THREE.WebGLRenderer }} ctx
+ *           director: import("../cameras/director.js").Director }} ctx
  * @returns {GUI}
  */
-export function createGUI({ sprint, cameraRig, ceremony, lighting, renderer }) {
+export function createGUI({ sprint, longJump, football, ceremony, director }) {
   const gui = new GUI({ title: "Olympic Stadium" });
 
-  const sprintFolder = gui.addFolder("Sprint event");
-  const actions = {
-    start: () => sprint.start(),
-    reset: () => sprint.reset(),
+  // --- Director (camera) modes ----------------------------------------------
+  const camFolder = gui.addFolder("Director");
+  const camModes = {
+    "Broadcast TV": "broadcast",
+    "Spider-cam": "spider",
+    "Action Track": "action",
+    "Free Explore": "free",
   };
-  sprintFolder.add(actions, "start").name("▶ Start race");
-  sprintFolder.add(actions, "reset").name("↺ Reset");
+  const camState = { mode: "free" };
+  const modeCtrl = camFolder
+    .add(camState, "mode", camModes)
+    .name("Mode")
+    .onChange((v) => director.setMode(v));
 
+  // --- Sports events ---------------------------------------------------------
+  // Starting an event makes it the Director's active subject. If the user is in
+  // Free Explore (which ignores the subject), snap to Action Track so the event
+  // is actually framed instead of the view appearing "stuck".
+  const wireEvent = (folderName, event, startLabel, subjectType) => {
+    const folder = gui.addFolder(folderName);
+    const actions = {
+      start: () => {
+        event.start();
+        director.setSubject(event.athlete.root, subjectType);
+        if (director.mode === "free") modeCtrl.setValue("action");
+      },
+      reset: () => event.reset(),
+    };
+    folder.add(actions, "start").name(startLabel);
+    folder.add(actions, "reset").name("↺ Reset");
+  };
+
+  wireEvent("Sprint event", sprint, "▶ Start race", "sprinter");
+  if (longJump) wireEvent("Long jump", longJump, "▶ Start long jump", "jumper");
+  if (football) wireEvent("Football", football, "▶ Start football", "football");
+
+  // --- Opening ceremony ------------------------------------------------------
   if (ceremony) {
     const cerFolder = gui.addFolder("Ceremony");
     const cerState = { active: false };
@@ -30,38 +60,6 @@ export function createGUI({ sprint, cameraRig, ceremony, lighting, renderer }) {
       .add(cerState, "active")
       .name("✨ Opening ceremony")
       .onChange((v) => (v ? ceremony.start() : ceremony.stop()));
-  }
-
-  const camFolder = gui.addFolder("Camera");
-  const camState = { follow: false };
-  camFolder
-    .add(camState, "follow")
-    .name("Follow runner")
-    .onChange((v) => cameraRig.setMode(v ? "follow" : "orbit"));
-
-  // Live lighting tuning (handy while judging the look at night).
-  if (lighting || renderer) {
-    const lightFolder = gui.addFolder("Lighting");
-    if (lighting?.floodlights?.length) {
-      const flood = { intensity: lighting.floodlights[0].intensity };
-      lightFolder
-        .add(flood, "intensity", 0, 20, 0.5)
-        .name("Floodlights")
-        .onChange((v) => lighting.floodlights.forEach((s) => (s.intensity = v)));
-    }
-    if (lighting?.moon) {
-      lightFolder.add(lighting.moon, "intensity", 0, 4, 0.1).name("Moonlight");
-    }
-    if (lighting?.hemisphere) {
-      lightFolder
-        .add(lighting.hemisphere, "intensity", 0, 3, 0.1)
-        .name("Ambient");
-    }
-    if (renderer) {
-      lightFolder
-        .add(renderer, "toneMappingExposure", 0.4, 2.5, 0.05)
-        .name("Exposure");
-    }
   }
 
   return gui;

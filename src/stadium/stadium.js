@@ -2,6 +2,7 @@ import * as THREE from "three";
 
 import { createField } from "./field.js";
 import { createTrack } from "./track.js";
+import { createApron } from "./apron.js";
 import { createStands } from "./stands.js";
 import { createTowers } from "./towers.js";
 
@@ -21,15 +22,17 @@ export function createStadium() {
 
   const field = createField();
   const track = createTrack();
+  const apron = createApron();
   const stands = createStands();
   const towers = createTowers();
 
   group.add(field.group);
   group.add(track.mesh);
+  group.add(apron.group);
   group.add(stands.mesh);
   group.add(towers.group);
 
-  const parts = [field, track, stands, towers];
+  const parts = [field, track, apron, stands, towers];
 
   return {
     group,

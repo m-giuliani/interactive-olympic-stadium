@@ -210,6 +210,110 @@ export class Athlete {
     arm.elbow.rotation.z = 1.1 + 0.3 * amp * Math.sin(ph); // ~90° pumping elbow
   }
 
+  /**
+   * Takeoff gather / landing absorb: a two-footed crouch with the arms drawn
+   * back, ready to drive upward (or to cushion the landing).
+   */
+  applyGather() {
+    this._zero();
+    const j = this.joints;
+    for (const leg of [j.legL, j.legR]) {
+      leg.hip.rotation.z = 0.35;
+      leg.knee.rotation.z = -0.85;
+      leg.ankle.rotation.z = 0.35;
+    }
+    j.torso.rotation.z = -0.25;
+    for (const arm of [j.armL, j.armR]) {
+      arm.shoulder.rotation.z = -1.0; // arms swept back
+      arm.elbow.rotation.z = 0.3;
+    }
+  }
+
+  /**
+   * Long jump flight, parameterised 0..1 across the arc: an early "sail" (knees
+   * tucked, arms overhead) that morphs into a "reach" (legs extended forward,
+   * arms swinging down) for the landing.
+   * @param {number} p flight progress, 0 (takeoff) → 1 (landing).
+   */
+  applyFlight(p) {
+    this._zero();
+    const j = this.joints;
+    const reach = THREE.MathUtils.smoothstep(p, 0.45, 1.0); // 0 early → 1 late
+
+    const hipFlex = 0.6 + 1.0 * reach; // thighs swing up/forward for the reach
+    const kneeBend = -(1.2 * (1 - reach) + 0.1); // tucked early, straight late
+    for (const leg of [j.legL, j.legR]) {
+      leg.hip.rotation.z = hipFlex;
+      leg.knee.rotation.z = kneeBend;
+      leg.ankle.rotation.z = 0.2 + 0.3 * reach;
+    }
+    j.legR.hip.rotation.z = hipFlex * 0.92; // slight asymmetry
+
+    const armAngle = 2.4 * (1 - reach) + 0.5 * reach; // overhead → forward/down
+    for (const [arm, splay] of [
+      [j.armL, 0.2],
+      [j.armR, -0.2],
+    ]) {
+      arm.shoulder.rotation.z = armAngle;
+      arm.shoulder.rotation.x = splay * (1 - reach);
+      arm.elbow.rotation.z = 0.2;
+    }
+
+    j.torso.rotation.z = -0.1 + 0.5 * reach; // arch back, then fold for landing
+  }
+
+  /**
+   * Keepie-uppie juggling: alternating knee lifts with the arms out for
+   * balance. The event bobs the ball above the lifting foot.
+   * @param {number} t time in seconds.
+   */
+  applyJuggle(t) {
+    this._zero();
+    const j = this.joints;
+    const liftR = Math.max(0, Math.sin(t * 4));
+    const liftL = Math.max(0, Math.sin(t * 4 + Math.PI));
+    j.legR.hip.rotation.z = 0.3 * liftR;
+    j.legR.knee.rotation.z = -1.0 * liftR;
+    j.legL.hip.rotation.z = 0.3 * liftL;
+    j.legL.knee.rotation.z = -1.0 * liftL;
+    for (const [arm, splay] of [
+      [j.armL, 0.7],
+      [j.armR, -0.7],
+    ]) {
+      arm.shoulder.rotation.x = splay;
+      arm.shoulder.rotation.z = -0.2;
+      arm.elbow.rotation.z = 0.4;
+    }
+  }
+
+  /**
+   * A kick, parameterised 0..1: the right leg swings from a cocked-back windup
+   * through to follow-through while the left leg plants. The event launches the
+   * ball around the contact point (p ≈ 0.55).
+   * @param {number} p kick progress, 0 (windup) → 1 (follow-through).
+   */
+  applyKick(p) {
+    this._zero();
+    const j = this.joints;
+
+    // Plant leg (left) takes the weight, slightly bent.
+    j.legL.hip.rotation.z = -0.1;
+    j.legL.knee.rotation.z = -0.3;
+
+    // Kicking leg (right): hip swings back then forward; knee whips straight.
+    j.legR.hip.rotation.z = THREE.MathUtils.lerp(-0.8, 1.3, p);
+    j.legR.knee.rotation.z = -(0.2 + 0.8 * (1 - p)); // cocked early, extends late
+    j.legR.ankle.rotation.z = 0.2;
+
+    // Arms counterbalance the swing.
+    j.armL.shoulder.rotation.z = 0.8;
+    j.armL.elbow.rotation.z = 0.6;
+    j.armR.shoulder.rotation.z = -0.6;
+    j.armR.elbow.rotation.z = 0.6;
+
+    j.torso.rotation.z = -0.1 + 0.25 * p;
+  }
+
   /** Victory celebration: arms raised in a V with a little bounce. */
   applyCelebrate(t) {
     this._zero();

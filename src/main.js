@@ -7,11 +7,15 @@ import { Loop } from "./core/loop.js";
 import { createPostProcessing } from "./core/postprocessing.js";
 import { createStadium } from "./stadium/stadium.js";
 import { createLedRibbon } from "./stadium/ledRibbon.js";
+import { createLongJumpPit } from "./stadium/longJumpPit.js";
+import { createGoal } from "./stadium/goal.js";
 import { createLighting } from "./lighting/lighting.js";
 import { Athlete } from "./athletes/athlete.js";
 import { SprintEvent } from "./events/sprint.js";
+import { LongJumpEvent } from "./events/longJump.js";
+import { FootballEvent } from "./events/football.js";
 import { Ceremony } from "./events/ceremony.js";
-import { CameraRig } from "./cameras/cameraRig.js";
+import { Director } from "./cameras/director.js";
 import { createGUI } from "./ui/gui.js";
 
 /**
@@ -44,19 +48,38 @@ function init() {
   const led = createLedRibbon();
   scene.add(led.mesh);
 
+  const longJumpPit = createLongJumpPit();
+  scene.add(longJumpPit.group);
+
+  const goal = createGoal();
+  scene.add(goal.group);
+
   const lighting = createLighting(stadium.towerHeads);
   scene.add(lighting.group);
 
-  // Athlete + sprint event.
+  const hud = makeHud();
+
+  // Director AI (broadcast / spider / action / free). Created before the events
+  // so the football can re-point it at the ball mid-flight; drives DoF focus.
+  const director = new Director(camera, controls, {
+    bokehPass: postFx.bokehPass,
+  });
+
+  // Sprint athlete + event.
   const athlete = new Athlete();
   scene.add(athlete.root);
-
-  const hud = makeHud();
   const sprint = new SprintEvent(athlete, { onStatus: hud });
 
-  // Cameras: free orbit by default, with optional follow + cinematic modes.
-  const cameraRig = new CameraRig(camera, controls);
-  cameraRig.follow(athlete.root);
+  // A second instance of the same parametric rig drives the long jump (§7).
+  const jumper = new Athlete();
+  scene.add(jumper.root);
+  const longJump = new LongJumpEvent(jumper, { onStatus: hud });
+
+  // A third instance drives the football exhibition; the event owns the ball.
+  const footballer = new Athlete();
+  scene.add(footballer.root);
+  const football = new FootballEvent(footballer, { onStatus: hud, director });
+  scene.add(football.ball);
 
   // Ceremony mode (dynamic lights, LED/emissive, bloom, cinematic camera).
   const ceremony = new Ceremony({
@@ -64,18 +87,23 @@ function init() {
     lighting,
     ledMaterial: led.material,
     bloomPass: postFx.bloomPass,
-    cameraRig,
+    director,
     onStatus: hud,
   });
 
-  // GUI controls.
-  createGUI({ sprint, cameraRig, ceremony, lighting, renderer });
+  // GUI controls (director mode + sports events + ceremony toggle).
+  createGUI({ sprint, longJump, football, ceremony, director });
 
   // Per-frame updates (single loop, CLAUDE.md §6).
+  // ORDER MATTERS: every subject must move BEFORE the director reads its position,
+  // otherwise the camera tracks last frame's pose and stutters. Keep
+  // director.update() strictly LAST.
   loop.add((delta) => {
     sprint.update(delta);
+    longJump.update(delta);
+    football.update(delta);
     ceremony.update(delta);
-    cameraRig.update(delta);
+    director.update(delta);
   });
 
   loop.start();

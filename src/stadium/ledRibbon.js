@@ -1,7 +1,15 @@
 import * as THREE from "three";
 
 import { discorectanglePoints, buildRibbon } from "../utils/geometry.js";
-import { STRAIGHT_HALF, BOWL_BOTTOM_RADIUS, ARC_SEGMENTS } from "./config.js";
+import {
+  STRAIGHT_HALF,
+  BOWL_BOTTOM_RADIUS,
+  BOWL_BASE_HEIGHT,
+  ARC_SEGMENTS,
+} from "./config.js";
+
+// A sleek board height — thin, like a digital advertising strip.
+const RIBBON_HEIGHT = 0.55;
 
 /**
  * An emissive LED ribbon board: a thin vertical band following the oval just in
@@ -15,12 +23,20 @@ import { STRAIGHT_HALF, BOWL_BOTTOM_RADIUS, ARC_SEGMENTS } from "./config.js";
  */
 export function createLedRibbon() {
   // Same loop used twice at two heights → a vertical band around the oval.
+  // A thin board whose bottom edge sits flush on top of the grey perimeter wall
+  // (which rises to BOWL_BASE_HEIGHT), so it reads as a mounted advertising strip
+  // with no floating gap and a low profile that doesn't block the track view.
   const loop = discorectanglePoints(
     STRAIGHT_HALF,
     BOWL_BOTTOM_RADIUS - 0.2,
     ARC_SEGMENTS,
   );
-  const geo = buildRibbon(loop, 1.7, loop, 3.3);
+  const geo = buildRibbon(
+    loop,
+    BOWL_BASE_HEIGHT,
+    loop,
+    BOWL_BASE_HEIGHT + RIBBON_HEIGHT,
+  );
 
   const material = new THREE.MeshStandardMaterial({
     color: 0x05060a,

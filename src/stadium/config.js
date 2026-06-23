@@ -47,5 +47,29 @@ export const TOWERS = [
   { x: -110, z: -85 },
 ];
 
+// --- Long jump facility ------------------------------------------------------
+// Sits on the apron (the BOWL_GAP ring) along the +Z straight, just outside the
+// track. Oriented along +X: run-up, takeoff board, then the sand pit. The 5 m
+// gap comfortably fits the 1.4 m runway and 3 m pit (centred in the ring).
+export const LJ_Z = TRACK_OUTER_RADIUS + BOWL_GAP / 2; // ≈ 48.76
+export const LJ_RUNWAY_START_X = -20;
+export const LJ_BOARD_X = 6;
+export const LJ_PIT_START_X = 6;
+export const LJ_PIT_END_X = 15;
+export const LJ_RUNWAY_WIDTH = 1.4;
+export const LJ_PIT_WIDTH = 3.0;
+
+// --- Football exhibition -----------------------------------------------------
+// On the −X half of the pitch (the long jump is on +X). The footballer faces −X
+// and shoots into the goal standing on the −X goal line.
+export const FB_Z = 0;
+export const FB_GOAL_X = -50; // goal line
+export const FB_GOAL_WIDTH = 7.32; // regulation
+export const FB_GOAL_HEIGHT = 2.44;
+export const FB_GOAL_DEPTH = 2;
+export const FB_BALL_START_X = -30;
+export const FB_PLAYER_START_X = -23;
+export const BALL_RADIUS = 0.12;
+
 // Resolution for sampling each semicircular arc of the discorectangle.
 export const ARC_SEGMENTS = 80;

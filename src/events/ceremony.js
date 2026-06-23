@@ -28,15 +28,15 @@ export class Ceremony {
    *   lighting: { floodlights: THREE.SpotLight[], moon: THREE.DirectionalLight },
    *   ledMaterial: THREE.MeshStandardMaterial,
    *   bloomPass: import("three/addons/postprocessing/UnrealBloomPass.js").UnrealBloomPass,
-   *   cameraRig: import("../cameras/cameraRig.js").CameraRig,
+   *   director: import("../cameras/director.js").Director,
    *   onStatus?: (text: string) => void,
    * }} ctx
    */
-  constructor({ scene, lighting, ledMaterial, bloomPass, cameraRig, onStatus }) {
+  constructor({ scene, lighting, ledMaterial, bloomPass, director, onStatus }) {
     this.lighting = lighting;
     this.ledMaterial = ledMaterial;
     this.bloomPass = bloomPass;
-    this.cameraRig = cameraRig;
+    this.director = director;
     this.onStatus = onStatus ?? (() => {});
 
     this.active = false;
@@ -84,10 +84,10 @@ export class Ceremony {
     this.lighting.floodlights.forEach((s) => this._tween(s, "intensity", 0.4));
     this._tween(this.lighting.moon, "intensity", 0.2);
     this.beams.forEach((b) => this._tween(b.spot, "intensity", 6));
-    this._tween(this.ledMaterial, "emissiveIntensity", 2.4, 1200);
-    this._tween(this.bloomPass, "strength", 1.3, 1200);
+    // The LED emissive and bloom strength are driven (pulsed) in update() while
+    // active, ramped in over the first ~1.2 s — see update().
 
-    this.cameraRig.setMode("cinematic");
+    this.director.setMode("cinematic");
   }
 
   stop() {
@@ -100,16 +100,18 @@ export class Ceremony {
     );
     this._tween(this.lighting.moon, "intensity", this._moonBase);
     this.beams.forEach((b) => this._tween(b.spot, "intensity", 0));
+    // update() stops writing these once inactive, so the tweens win.
     this._tween(this.ledMaterial, "emissiveIntensity", this._ledBase, 1000);
     this._tween(this.bloomPass, "strength", 0, 1000);
 
-    this.cameraRig.setMode("orbit");
+    this.director.setMode("free");
   }
 
   update(delta) {
     if (!this.active) return;
     this.time += delta;
     const t = this.time;
+    const ramp = Math.min(1, t / 1.2); // ease the effects in
 
     // Sweep each beam across the infield and cycle its colour.
     this.beams.forEach((b, i) => {
@@ -121,8 +123,17 @@ export class Ceremony {
       b.spot.color.setHSL((i / BEAM_COUNT + t * 0.05) % 1, 1, 0.55);
     });
 
-    // Rolling rainbow on the LED ribbon.
+    // LED ribbon: rolling rainbow + a bright, pulsing emissive glow.
     this.ledMaterial.emissive.setHSL((t * 0.1) % 1, 0.9, 0.5);
+    const pulse = 2.2 + 0.9 * Math.sin(t * 4); // 1.3 .. 3.1
+    this.ledMaterial.emissiveIntensity = THREE.MathUtils.lerp(
+      this._ledBase,
+      pulse,
+      ramp,
+    );
+
+    // Bloom breathes with the LEDs so the glow visibly pulses.
+    this.bloomPass.strength = ramp * (1.1 + 0.4 * Math.abs(Math.sin(t * 2)));
   }
 
   _tween(obj, prop, to, duration = 1000) {

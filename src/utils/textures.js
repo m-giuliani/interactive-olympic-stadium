@@ -179,3 +179,69 @@ export function makeSeatTexture() {
 
   return asColorTexture(canvas);
 }
+
+/** Filled regular pentagon centred at (cx, cy). */
+function pentagon(ctx, cx, cy, r) {
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const a = -Math.PI / 2 + (i / 5) * Math.PI * 2;
+    const x = cx + r * Math.cos(a);
+    const y = cy + r * Math.sin(a);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+/**
+ * Classic black-pentagons-on-white football texture.
+ * @returns {THREE.CanvasTexture}
+ */
+export function makeFootballTexture() {
+  const s = 256;
+  const canvas = makeCanvas(s, s);
+  const ctx = canvas.getContext("2d");
+
+  ctx.fillStyle = "#f4f4f4";
+  ctx.fillRect(0, 0, s, s);
+
+  ctx.fillStyle = "#161616";
+  const spots = [
+    [0.5, 0.22],
+    [0.18, 0.45],
+    [0.82, 0.45],
+    [0.34, 0.72],
+    [0.66, 0.72],
+    [0.5, 0.96],
+    [0.08, 0.12],
+    [0.92, 0.15],
+  ];
+  for (const [u, v] of spots) pentagon(ctx, u * s, v * s, s * 0.075);
+
+  return asColorTexture(canvas);
+}
+
+/**
+ * Semi-transparent goal-net texture (white grid on transparent).
+ * @returns {THREE.CanvasTexture}
+ */
+export function makeNetTexture() {
+  const s = 128;
+  const canvas = makeCanvas(s, s);
+  const ctx = canvas.getContext("2d");
+
+  ctx.clearRect(0, 0, s, s); // transparent background
+  ctx.strokeStyle = "rgba(255,255,255,0.55)";
+  ctx.lineWidth = 1.5;
+  const step = 10;
+  for (let i = 0; i <= s; i += step) {
+    ctx.beginPath();
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i, s);
+    ctx.moveTo(0, i);
+    ctx.lineTo(s, i);
+    ctx.stroke();
+  }
+
+  return asColorTexture(canvas);
+}
