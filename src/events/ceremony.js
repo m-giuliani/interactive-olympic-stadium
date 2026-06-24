@@ -27,20 +27,33 @@ export class Ceremony {
    *   scene: THREE.Scene,
    *   lighting: { floodlights: THREE.SpotLight[], moon: THREE.DirectionalLight },
    *   ledMaterial: THREE.MeshStandardMaterial,
+   *   roofLeds?: THREE.InstancedMesh,
    *   bloomPass: import("three/addons/postprocessing/UnrealBloomPass.js").UnrealBloomPass,
    *   director: import("../cameras/director.js").Director,
    *   onStatus?: (text: string) => void,
    * }} ctx
    */
-  constructor({ scene, lighting, ledMaterial, bloomPass, director, onStatus }) {
+  constructor({
+    scene,
+    lighting,
+    ledMaterial,
+    roofLeds,
+    bloomPass,
+    director,
+    onStatus,
+  }) {
     this.lighting = lighting;
     this.ledMaterial = ledMaterial;
+    this.roofLeds = roofLeds ?? null;
     this.bloomPass = bloomPass;
     this.director = director;
     this.onStatus = onStatus ?? (() => {});
 
     this.active = false;
     this.time = 0;
+
+    // Scratch colour reused for the per-LED chase wave (no per-frame allocation).
+    this._ledColor = new THREE.Color();
 
     // Baselines to restore when the ceremony ends.
     this._floodBase = lighting.floodlights.map((s) => s.intensity);
@@ -116,6 +129,31 @@ export class Ceremony {
       .start();
     this._tween(this.bloomPass, "strength", 0, 1000);
 
+    // Fade the roof LED matrix from its current chase colours back to idle grey.
+    if (this.roofLeds) {
+      const leds = this.roofLeds;
+      const off = leds.userData.offColor;
+      const n = leds.count;
+      const fromColors = [];
+      for (let i = 0; i < n; i++) {
+        const cc = new THREE.Color();
+        leds.getColorAt(i, cc);
+        fromColors.push(cc);
+      }
+      const tmp = new THREE.Color();
+      const ledFade = { k: 0 };
+      new TWEEN.Tween(ledFade)
+        .to({ k: 1 }, 1000)
+        .onUpdate(() => {
+          for (let i = 0; i < n; i++) {
+            tmp.lerpColors(fromColors[i], off, ledFade.k);
+            leds.setColorAt(i, tmp);
+          }
+          leds.instanceColor.needsUpdate = true;
+        })
+        .start();
+    }
+
     this.director.setMode("free");
   }
 
@@ -143,6 +181,24 @@ export class Ceremony {
       pulse,
       ramp,
     );
+
+    // Roof LED matrix: a rotating rainbow chase wave around the inner rim.
+    // Index i runs in order around the ring, so a phase term in i makes crests
+    // of light travel; HDR (>1) magnitude makes the lit LEDs bloom.
+    if (this.roofLeds) {
+      const leds = this.roofLeds;
+      const n = leds.count;
+      const c = this._ledColor;
+      for (let i = 0; i < n; i++) {
+        const f = i / n;
+        const hue = (f * 2 + t * 0.08) % 1; // two colour bands, slowly rotating
+        const wave = 0.5 + 0.5 * Math.sin(f * Math.PI * 2 * 3 - t * 3); // 3 crests chasing
+        const intensity = ramp * (1.0 + 2.4 * wave);
+        c.setHSL(hue, 1.0, 0.5).multiplyScalar(intensity);
+        leds.setColorAt(i, c);
+      }
+      leds.instanceColor.needsUpdate = true;
+    }
 
     // Bloom breathes with the LEDs so the glow visibly pulses.
     this.bloomPass.strength = ramp * (1.1 + 0.4 * Math.abs(Math.sin(t * 2)));

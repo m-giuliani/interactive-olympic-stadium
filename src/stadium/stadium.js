@@ -40,6 +40,7 @@ export function createStadium() {
   return {
     group,
     lightAnchors: roof.rimLights,
+    roofLeds: roof.roofLeds,
     dispose: () => parts.forEach((p) => p.dispose()),
   };
 }

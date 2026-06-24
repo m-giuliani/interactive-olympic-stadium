@@ -20,7 +20,7 @@ import * as THREE from "three";
  * Also drives the depth-of-field focus distance if a BokehPass is supplied.
  */
 
-const BROADCAST_POS = new THREE.Vector3(0, 33, 80); // gantry in the main stand
+const BROADCAST_POS = new THREE.Vector3(0, 30, 80); // gantry in the main stand
 const SPIDER_HEIGHT = 48;
 const SPIDER_TRAIL = 8; // how far the spider-cam trails behind the athlete (m)
 const FLY_SPEED = 32; // m/s for WASD movement
@@ -165,15 +165,18 @@ export class Director {
       this._cineTime += dt;
       const ct = this._cineTime;
       const angle = ct * 0.15;
-      const radius = 135 + 25 * Math.sin(ct * 0.1);
-      const height = 40 + 18 * Math.sin(ct * 0.07);
+      // Elevated aerial sweep: higher altitude + a slightly tighter radius so the
+      // camera looks cleanly DOWN onto the pitch as it orbits.
+      const radius = 120 + 20 * Math.sin(ct * 0.1);
+      const height = 80 + 16 * Math.sin(ct * 0.07);
       this.camera.position.set(
         Math.cos(angle) * radius,
         height,
         Math.sin(angle) * radius,
       );
-      this.camera.lookAt(0, 8, 0);
-      this._updateDof(this._v1.set(0, 8, 0));
+      // Aim low (pitch level) so the elevated camera is angled down and centred.
+      this.camera.lookAt(0, 2, 0);
+      this._updateDof(this._v1.set(0, 2, 0));
       return;
     }
 

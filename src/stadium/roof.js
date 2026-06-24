@@ -20,11 +20,13 @@ import {
  *     (one InstancedMesh) tying the top of the concrete facade out to the wavy
  *     outer eaves of the canopy.
  *
- * Floodlighting is INTEGRATED into the roof: this module exposes mount points on
- * the inner rim (`rimLights`) so the lighting rig hangs its SpotLights there,
- * pointing down/inward at the pitch centre. Emissive housings mark each fixture.
+ * Floodlighting is a single unified LED matrix integrated into the inner rim
+ * (`roofLeds`, see section 3) — emissive enclosures that read as the stadium's
+ * main fixtures and are animated by the ceremony. `rimLights` is kept as an empty
+ * array for backward compatibility with the lighting-rig wiring.
  *
- * @returns {{ group: THREE.Group, rimLights: THREE.Vector3[], dispose: () => void }}
+ * @returns {{ group: THREE.Group, rimLights: THREE.Vector3[],
+ *             roofLeds: THREE.InstancedMesh, dispose: () => void }}
  */
 
 // Edge of the central opening (also the light-mount ring). Pushed far out into
@@ -48,6 +50,9 @@ const AMP = 2.2;
 // Truss bays around the perimeter (2 per scallop).
 const TRUSS_BAYS = 72;
 const TUBE_RADIUS = 0.35;
+// Floodlight fixtures evenly spaced along the inner rim. Fewer but larger and
+// more powerful than a dense dot strip.
+const LED_COUNT = 8;
 
 /**
  * A point on the discorectangle outline at radius R, addressed by arc-length
@@ -219,45 +224,62 @@ export function createRoof() {
   group.add(truss);
 
   // ---------------------------------------------------------------------------
-  // 3. Integrated floodlight fixtures on the (wavy) inner rim
-  //    Four corners of the inner opening, each riding the local membrane height.
+  // 3. Unified roof LED floodlight matrix — the stadium's ONLY roof lighting now
+  //    (the old corner floodlight housings have been removed). An ordered ring of
+  //    LED_COUNT powerful fixtures on the inner rim, animated by the ceremony
+  //    (chasing rainbow wave). One InstancedMesh with per-instance colour; the
+  //    index order (0..N-1 around the ring) drives the travelling wave.
+  //
+  //    MeshStandardMaterial so the enclosures sit correctly in the PBR lighting,
+  //    with a strong white emissive (intensity 5.0) so the 8 fixtures blaze as
+  //    the stadium's main lights even when idle, and bloom during the ceremony.
   // ---------------------------------------------------------------------------
-  const housingGeo = new THREE.BoxGeometry(4, 0.7, 1.6);
-  const housingMat = new THREE.MeshStandardMaterial({
-    color: 0xfff4d6,
-    emissive: 0xfff0c8,
-    emissiveIntensity: 3.0, // bright enough to bloom during the ceremony
-    roughness: 0.3,
+  const center = new THREE.Vector3(0, 0, 0);
+  const ledGeo = new THREE.BoxGeometry(4.5, 2.0, 1.4); // a chunky lighting rig enclosure
+  const ledMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    emissive: 0xffffff, // pure-white self-glow → bright stadium floodlights
+    emissiveIntensity: 5.0, // strong baseline so they read as powerful when idle
+    roughness: 0.4,
     metalness: 0.2,
   });
-  disposables.push(housingGeo, housingMat);
+  disposables.push(ledGeo, ledMat);
 
-  // Perimeter fractions of the four straight/curve junctions at INNER_RADIUS.
-  const arc = Math.PI * INNER_RADIUS;
-  const straight = 2 * STRAIGHT_HALF;
-  const P = 2 * arc + 2 * straight;
-  const cornerUs = [
-    arc / P, // (+s, +R)
-    (arc + straight) / P, // (-s, +R)
-    (2 * arc + straight) / P, // (-s, -R)
-    0, // (+s, -R)
-  ];
+  const roofLeds = new THREE.InstancedMesh(ledGeo, ledMat, LED_COUNT);
+  roofLeds.name = "RoofLeds";
+  const offColor = new THREE.Color(0xffffff); // pure white → stable lit-stadium look
+  roofLeds.userData.offColor = offColor;
 
-  const center = new THREE.Vector3(0, 0, 0);
-  const cp = new THREE.Vector2();
-  const rimLights = cornerUs.map((u) => {
-    perimeterPoint(INNER_RADIUS, u, cp);
-    const pos = new THREE.Vector3(cp.x, heightAt(u) - 1.5, cp.y);
-    const housing = new THREE.Mesh(housingGeo, housingMat);
-    housing.position.copy(pos);
-    housing.lookAt(center); // -Z faces the pitch centre
-    group.add(housing);
-    return pos;
-  });
+  // Mount positions handed to the lighting rig so each fixture becomes a real
+  // SpotLight that actually illuminates the pitch (not just an emissive glow).
+  const lightAnchors = [];
+
+  const ledPos = new THREE.Vector2();
+  const ledV = new THREE.Vector3();
+  const ledMat4 = new THREE.Matrix4();
+  const ledLook = new THREE.Matrix4();
+  const ledQuat = new THREE.Quaternion();
+  const ledScale = new THREE.Vector3(1, 1, 1);
+  for (let i = 0; i < LED_COUNT; i++) {
+    const u = i / LED_COUNT;
+    perimeterPoint(INNER_RADIUS, u, ledPos);
+    ledV.set(ledPos.x, heightAt(u) - 0.8, ledPos.y); // hang just under the rim
+    // Orient the enclosure so its broad face aims down/inward at the pitch.
+    ledLook.lookAt(ledV, center, up);
+    ledQuat.setFromRotationMatrix(ledLook);
+    ledMat4.compose(ledV, ledQuat, ledScale);
+    roofLeds.setMatrixAt(i, ledMat4);
+    roofLeds.setColorAt(i, offColor);
+    lightAnchors.push(ledV.clone()); // a real light hangs here
+  }
+  roofLeds.instanceMatrix.needsUpdate = true;
+  roofLeds.instanceColor.needsUpdate = true;
+  group.add(roofLeds);
 
   return {
     group,
-    rimLights,
+    rimLights: lightAnchors, // 8 LED-fixture positions for the lighting rig
+    roofLeds,
     dispose: () => disposables.forEach((d) => d.dispose()),
   };
 }

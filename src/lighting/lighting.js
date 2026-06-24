@@ -42,17 +42,18 @@ export function createLighting(lightAnchors = []) {
   // Every spot points down/inward at the pitch centre (fixes the old outward-
   // pointing aim bug).
   const floodlights = [];
-  const aim = new THREE.Vector3(0, 0, 0);
+  const aim = new THREE.Vector3(0, 0, 0); // pitch centre
   lightAnchors.forEach((pos, i) => {
-    const spot = new THREE.SpotLight(0xfff4e0, 3.0);
+    // ~2.0 each: realistic combined stadium level across the 8 roof fixtures.
+    const spot = new THREE.SpotLight(0xfff4e0, 2.0);
     spot.position.copy(pos);
-    spot.angle = Math.PI / 6;
+    spot.angle = Math.PI / 5; // wide enough to wash the whole pitch
     spot.penumbra = 0.45;
     spot.decay = 0; // stadium floods read as near-parallel; skip inverse-square
     spot.distance = 0;
 
-    // Only two of the four cast shadows — enough for crisp athlete shadows on
-    // the track without paying for four extra shadow maps every frame.
+    // Only two of the eight cast shadows — enough for crisp athlete shadows on
+    // the track without paying for many extra shadow maps every frame.
     if (i < 2) {
       spot.castShadow = true;
       spot.shadow.mapSize.set(1024, 1024);

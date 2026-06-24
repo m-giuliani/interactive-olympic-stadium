@@ -92,6 +92,7 @@ function init() {
     scene,
     lighting,
     ledMaterial: led.material,
+    roofLeds: stadium.roofLeds,
     bloomPass: postFx.bloomPass,
     director,
     onStatus: hud,
