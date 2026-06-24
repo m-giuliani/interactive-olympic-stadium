@@ -46,6 +46,7 @@ export class Ceremony {
     this._floodBase = lighting.floodlights.map((s) => s.intensity);
     this._moonBase = lighting.moon.intensity;
     this._ledBase = ledMaterial.emissiveIntensity;
+    this._ledBaseColor = ledMaterial.emissive.clone();
 
     // Ring of coloured sweeping beams (off until the show starts).
     this.group = new THREE.Group();
@@ -102,6 +103,17 @@ export class Ceremony {
     this.beams.forEach((b) => this._tween(b.spot, "intensity", 0));
     // update() stops writing these once inactive, so the tweens win.
     this._tween(this.ledMaterial, "emissiveIntensity", this._ledBase, 1000);
+    // Fade the rainbow hue back to the default grey. Tween a plain 0→1 scalar
+    // and lerp the colour in onUpdate (more robust than animating emissive.r/g/b
+    // directly); `from` is whatever rainbow hue the LED froze on at stop time.
+    const from = this.ledMaterial.emissive.clone();
+    const fade = { k: 0 };
+    new TWEEN.Tween(fade)
+      .to({ k: 1 }, 1000)
+      .onUpdate(() => {
+        this.ledMaterial.emissive.lerpColors(from, this._ledBaseColor, fade.k);
+      })
+      .start();
     this._tween(this.bloomPass, "strength", 0, 1000);
 
     this.director.setMode("free");

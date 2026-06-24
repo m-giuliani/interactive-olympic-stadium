@@ -1,5 +1,4 @@
 import * as THREE from "three";
-
 import { discorectanglePoints, buildRibbon } from "../utils/geometry.js";
 import {
   STRAIGHT_HALF,
@@ -8,41 +7,34 @@ import {
   ARC_SEGMENTS,
 } from "./config.js";
 
-// A sleek board height — thin, like a digital advertising strip.
-const RIBBON_HEIGHT = 0.55;
-
 /**
- * An emissive LED ribbon board: a thin vertical band following the oval just in
- * front of the first row of seats — the classic perimeter advertising display.
- *
- * It glows faintly in normal play; the ceremony cranks up its emissive intensity
- * and cycles its hue, and the bloom pass turns it into the show's centrepiece
- * (CLAUDE.md §8 priority 3: LED/emissive + bloom).
+ * An emissive LED ribbon board: a tall digital advertising display mounted flush
+ * against the dark grey perimeter parapet wall, wrapping the inner perimeter of
+ * the stands.
  *
  * @returns {{ mesh: THREE.Mesh, material: THREE.MeshStandardMaterial, dispose: () => void }}
  */
 export function createLedRibbon() {
-  // Same loop used twice at two heights → a vertical band around the oval.
-  // A thin board whose bottom edge sits flush on top of the grey perimeter wall
-  // (which rises to BOWL_BASE_HEIGHT), so it reads as a mounted advertising strip
-  // with no floating gap and a low profile that doesn't block the track view.
+  // 1. Create the oval outline (hollow in the middle) exactly 5 millimeters 
+  // in front of the concrete wall to avoid z-fighting and act as a screen wrap.
   const loop = discorectanglePoints(
     STRAIGHT_HALF,
-    BOWL_BOTTOM_RADIUS - 0.2,
-    ARC_SEGMENTS,
-  );
-  const geo = buildRibbon(
-    loop,
-    BOWL_BASE_HEIGHT,
-    loop,
-    BOWL_BASE_HEIGHT + RIBBON_HEIGHT,
+    BOWL_BOTTOM_RADIUS - 0.05,
+    ARC_SEGMENTS
   );
 
+  // 2. Extrude the ribbon from the ground (0) up to the bottom of the seats (BOWL_BASE_HEIGHT).
+  // We add a tiny +0.02 overlap to ensure there are no visible gaps at the top edge.
+  const geo = buildRibbon(loop, 0, loop, BOWL_BASE_HEIGHT + 0.02);
+
+  // 3. Neutral grey board by default — a powered-down advertising panel.
+  // The ceremony cranks the emissive intensity and cycles a rainbow hue, then
+  // restores this grey when it ends (see events/ceremony.js).
   const material = new THREE.MeshStandardMaterial({
-    color: 0x05060a,
-    emissive: 0x2244ff,
+    color: 0x2a2d33,
+    emissive: 0x808080,
     emissiveIntensity: 0.4,
-    roughness: 0.4,
+    roughness: 0.6,
     metalness: 0.0,
     side: THREE.DoubleSide,
   });

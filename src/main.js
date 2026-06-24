@@ -26,6 +26,7 @@ import { createGUI } from "./ui/gui.js";
  * starts the single animation loop.
  */
 function init() {
+  console.log("🚨 STO LEGGENDO IL MAIN.JS GIUSTO! 🚨");
   const container = document.getElementById("app");
 
   const renderer = createRenderer(container);

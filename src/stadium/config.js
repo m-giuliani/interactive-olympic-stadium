@@ -33,7 +33,7 @@ export const BOWL_GAP = 5; // flat apron between track and the first row
 export const BOWL_BOTTOM_RADIUS = TRACK_OUTER_RADIUS + BOWL_GAP; // ~51.26 m
 export const BOWL_DEPTH = 45; // horizontal run of the raked seating
 export const BOWL_TOP_RADIUS = BOWL_BOTTOM_RADIUS + BOWL_DEPTH; // ~96.26 m
-export const BOWL_BASE_HEIGHT = 1.5;
+export const BOWL_BASE_HEIGHT = 1;
 export const BOWL_TOP_HEIGHT = 28;
 
 // --- Floodlight towers -------------------------------------------------------
