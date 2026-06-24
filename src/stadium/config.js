@@ -36,16 +36,8 @@ export const BOWL_TOP_RADIUS = BOWL_BOTTOM_RADIUS + BOWL_DEPTH; // ~96.26 m
 export const BOWL_BASE_HEIGHT = 1;
 export const BOWL_TOP_HEIGHT = 28;
 
-// --- Floodlight towers -------------------------------------------------------
-// Placed in the four corner gaps just outside the seating bowl. Positions are
-// in the XZ plane; the lighting rig puts a SpotLight at HEAD_HEIGHT above each.
-export const TOWER_HEAD_HEIGHT = 48;
-export const TOWERS = [
-  { x: 110, z: 85 },
-  { x: -110, z: 85 },
-  { x: 110, z: -85 },
-  { x: -110, z: -85 },
-];
+// Floodlighting is integrated into the tensile roof (see stadium/roof.js): the
+// SpotLight mount points are the roof's inner-rim corners, not standalone towers.
 
 // --- Long jump facility ------------------------------------------------------
 // Sits on the apron (the BOWL_GAP ring) along the +Z straight, just outside the

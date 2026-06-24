@@ -6,6 +6,7 @@ import { Loop } from "./core/loop.js";
 
 import { createPostProcessing } from "./core/postprocessing.js";
 import { createStadium } from "./stadium/stadium.js";
+import { createEnvironment } from "./stadium/environment.js";
 import { createLedRibbon } from "./stadium/ledRibbon.js";
 import { createLongJumpPit } from "./stadium/longJumpPit.js";
 import { createGoal } from "./stadium/goal.js";
@@ -26,7 +27,6 @@ import { createGUI } from "./ui/gui.js";
  * starts the single animation loop.
  */
 function init() {
-  console.log("🚨 STO LEGGENDO IL MAIN.JS GIUSTO! 🚨");
   const container = document.getElementById("app");
 
   const renderer = createRenderer(container);
@@ -46,6 +46,11 @@ function init() {
   const stadium = createStadium();
   scene.add(stadium.group);
 
+  // Procedural exterior (dusk sky, park trees, distant skyline). Passing `scene`
+  // lets it install a matching dusk fog + background.
+  const environment = createEnvironment(scene);
+  scene.add(environment.group);
+
   const led = createLedRibbon();
   scene.add(led.mesh);
 
@@ -55,7 +60,7 @@ function init() {
   const goal = createGoal();
   scene.add(goal.group);
 
-  const lighting = createLighting(stadium.towerHeads);
+  const lighting = createLighting(stadium.lightAnchors);
   scene.add(lighting.group);
 
   const hud = makeHud();
@@ -93,7 +98,7 @@ function init() {
   });
 
   // GUI controls (director mode + sports events + ceremony toggle).
-  createGUI({ sprint, longJump, football, ceremony, director });
+  createGUI({ sprint, longJump, football, ceremony, environment, director });
 
   // Per-frame updates (single loop, CLAUDE.md §6).
   // ORDER MATTERS: every subject must move BEFORE the director reads its position,

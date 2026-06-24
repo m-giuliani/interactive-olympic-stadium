@@ -4,17 +4,18 @@ import { createField } from "./field.js";
 import { createTrack } from "./track.js";
 import { createApron } from "./apron.js";
 import { createStands } from "./stands.js";
-import { createTowers } from "./towers.js";
+import { createExterior } from "./exterior.js";
+import { createRoof } from "./roof.js";
 
 /**
- * Assembles the whole stadium (field + track + stands + floodlight towers) into
- * a single hierarchical group.
+ * Assembles the whole stadium (field + track + stands + exterior + tensile roof)
+ * into a single hierarchical group.
  *
- * Returns the group plus the floodlight head positions (so the lighting rig can
- * place SpotLights there) and a dispose() that frees every GPU resource
- * (CLAUDE.md §6).
+ * Returns the group plus the roof's inner-rim light anchors (so the lighting rig
+ * can hang its floodlight SpotLights there) and a dispose() that frees every GPU
+ * resource (CLAUDE.md §6).
  *
- * @returns {{ group: THREE.Group, towerHeads: THREE.Vector3[], dispose: () => void }}
+ * @returns {{ group: THREE.Group, lightAnchors: THREE.Vector3[], dispose: () => void }}
  */
 export function createStadium() {
   const group = new THREE.Group();
@@ -24,19 +25,21 @@ export function createStadium() {
   const track = createTrack();
   const apron = createApron();
   const stands = createStands();
-  const towers = createTowers();
+  const exterior = createExterior();
+  const roof = createRoof();
 
   group.add(field.group);
   group.add(track.mesh);
   group.add(apron.group);
   group.add(stands.mesh);
-  group.add(towers.group);
+  group.add(exterior.group);
+  group.add(roof.group);
 
-  const parts = [field, track, apron, stands, towers];
+  const parts = [field, track, apron, stands, exterior, roof];
 
   return {
     group,
-    towerHeads: towers.headPositions,
+    lightAnchors: roof.rimLights,
     dispose: () => parts.forEach((p) => p.dispose()),
   };
 }

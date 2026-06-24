@@ -6,15 +6,16 @@ import * as THREE from "three";
  * Layers:
  *  - HemisphereLight  : cool night sky / dark ground fill so shadows aren't black.
  *  - DirectionalLight : the "moon", the primary shadow caster.
- *  - SpotLight ×4     : floodlights at the tower heads, aimed at the infield.
+ *  - SpotLight ×N     : floodlights hung on the tensile roof's inner rim, each
+ *                       aimed down/inward at the pitch centre (0,0,0).
  *
  * Returns the light group plus references so later modules (GUI, ceremony) can
  * animate or toggle individual lights.
  *
- * @param {THREE.Vector3[]} towerHeads world positions of the floodlight heads.
+ * @param {THREE.Vector3[]} lightAnchors world positions of the roof-rim floodlights.
  * @returns {{ group: THREE.Group, hemisphere, moon, floodlights, dispose: () => void }}
  */
-export function createLighting(towerHeads = []) {
+export function createLighting(lightAnchors = []) {
   const group = new THREE.Group();
   group.name = "Lighting";
 
@@ -37,10 +38,12 @@ export function createLighting(towerHeads = []) {
   group.add(moon);
   group.add(moon.target); // target at origin
 
-  // --- Floodlights from the four towers -------------------------------------
+  // --- Floodlights hung on the tensile roof's inner rim ---------------------
+  // Every spot points down/inward at the pitch centre (fixes the old outward-
+  // pointing aim bug).
   const floodlights = [];
-  const aim = new THREE.Vector3(0, 1, 0);
-  towerHeads.forEach((pos, i) => {
+  const aim = new THREE.Vector3(0, 0, 0);
+  lightAnchors.forEach((pos, i) => {
     const spot = new THREE.SpotLight(0xfff4e0, 3.0);
     spot.position.copy(pos);
     spot.angle = Math.PI / 6;
