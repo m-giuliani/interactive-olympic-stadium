@@ -10,8 +10,8 @@ import GUI from "lil-gui";
  *           longJump?: import("../events/longJump.js").LongJumpEvent,
  *           football?: import("../events/football.js").FootballEvent,
  *           ceremony?: import("../events/ceremony.js").Ceremony,
- *           environment?: ReturnType<typeof import("../stadium/environment.js").createEnvironment>,
- *           director: import("../cameras/director.js").Director }} ctx
+ *           director: import("../cameras/director.js").Director,
+ *           lightingManager?: import("../lighting/lightingManager.js").LightingManager }} ctx
  * @returns {GUI}
  */
 export function createGUI({
@@ -19,10 +19,21 @@ export function createGUI({
   longJump,
   football,
   ceremony,
-  environment,
   director,
+  lightingManager,
 }) {
   const gui = new GUI({ title: "Olympic Stadium" });
+
+  // --- Day / Night ----------------------------------------------------------
+  // Instant, mutually-exclusive switch: sun on / floods off, or vice-versa.
+  if (lightingManager) {
+    const lightFolder = gui.addFolder("Lighting");
+    const lightState = { day: lightingManager.isDay };
+    lightFolder
+      .add(lightState, "day")
+      .name("☀️ Day mode")
+      .onChange((v) => lightingManager.toggleDayNight(v));
+  }
 
   // --- Director (camera) modes ----------------------------------------------
   const camFolder = gui.addFolder("Director");
@@ -59,31 +70,6 @@ export function createGUI({
   wireEvent("Sprint event", sprint, "▶ Start race", "sprinter");
   if (longJump) wireEvent("Long jump", longJump, "▶ Start long jump", "jumper");
   if (football) wireEvent("Football", football, "▶ Start football", "football");
-
-  // --- Environment -----------------------------------------------------------
-  if (environment) {
-    const envFolder = gui.addFolder("Environment");
-    const envState = {
-      trees: true,
-      skyline: true,
-      fog: environment.fog ? environment.fog.density : 0.0011,
-    };
-    envFolder
-      .add(envState, "trees")
-      .name("🌲 Trees")
-      .onChange((v) => environment.trees.forEach((m) => (m.visible = v)));
-    envFolder
-      .add(envState, "skyline")
-      .name("🏙 Skyline")
-      .onChange((v) => environment.skyline.forEach((m) => (m.visible = v)));
-    if (environment.fog) {
-      envFolder
-        .add(envState, "fog", 0, 0.004, 0.0001)
-        .name("Fog density")
-        .onChange((v) => (environment.fog.density = v));
-    }
-    envFolder.close(); // tidy by default
-  }
 
   // --- Opening ceremony ------------------------------------------------------
   if (ceremony) {

@@ -45,7 +45,7 @@ export function createLighting(lightAnchors = []) {
   const aim = new THREE.Vector3(0, 0, 0); // pitch centre
   lightAnchors.forEach((pos, i) => {
     // ~2.0 each: realistic combined stadium level across the 8 roof fixtures.
-    const spot = new THREE.SpotLight(0xfff4e0, 2.0);
+    const spot = new THREE.SpotLight(0xfff4e0, 0.8);
     spot.position.copy(pos);
     spot.angle = Math.PI / 5; // wide enough to wash the whole pitch
     spot.penumbra = 0.45;

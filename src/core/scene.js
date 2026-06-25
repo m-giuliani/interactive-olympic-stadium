@@ -1,25 +1,17 @@
 import * as THREE from "three";
 
 /**
- * Creates the root scene with a night-time atmosphere.
- *
- * Fog (CLAUDE.md §3, optional but cheap) fades the far stands into the dark so
- * the stadium feels enclosed and the floodlights have something to catch. The
- * background colour matches the page background to avoid a visible seam.
+ * Creates the root scene. The background is a night colour as a fallback; the
+ * procedural sky dome (stadium/environment.js) and the LightingManager swap the
+ * real Day/Night atmosphere. No fog — the sky dome carries the look instead.
  *
  * Actual stadium geometry, lighting rig, and athletes are added by their own
- * modules — this file only owns the empty, atmospheric container.
+ * modules — this file only owns the empty container.
  *
  * @returns {THREE.Scene}
  */
 export function createScene() {
   const scene = new THREE.Scene();
-
-  const night = new THREE.Color(0x05070d);
-  scene.background = night;
-
-  // Exponential fog reads better than linear for an outdoor night scene.
-  scene.fog = new THREE.FogExp2(night, 0.0035);
-
+  scene.background = new THREE.Color(0x05070d);
   return scene;
 }

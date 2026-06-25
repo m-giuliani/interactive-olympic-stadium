@@ -1,40 +1,40 @@
 import * as THREE from "three";
 
-import { BOWL_TOP_RADIUS } from "./config.js";
-
 /**
  * The exterior environment that wraps the stadium so it no longer floats in a
- * black void (CLAUDE.md §8 enhancement). Inspired by Rome's Stadio Olimpico:
- * a dusk sky, a vast park of pine/cypress trees, and a distant city skyline.
+ * black void. Fully procedural — no imported models, no image textures.
  *
- * EVERYTHING is procedural — no imported models, no image textures (a deliberate
- * constraint to show technical proficiency). The sky is a gradient ShaderMaterial
- * on an inverted sphere; the ground is one big plane; the trees and buildings are
- * Three.js primitives placed via InstancedMesh so hundreds of them cost only a
- * handful of draw calls (performance, CLAUDE.md §8).
+ * It owns a Day/Night sky: a gradient sky dome plus celestial bodies that swap
+ * with the lighting state — a bright blue sky with a sun and drifting clouds at
+ * noon, a dark sky with a moon and a field of stars at night. The
+ * {@link LightingManager} drives the switch via {@link setDayNight}.
  *
- * Pass the scene in to also install a matching dusk fog + background so distant
- * trees and the skyline fade into the haze instead of ending on a hard edge.
- *
- * @param {THREE.Scene} [scene] optional — if given, its fog/background are set
- *   to a dusk haze that matches the sky's horizon colour.
- * @returns {{ group: THREE.Group, dispose: () => void }}
+ * @returns {{ group: THREE.Group, setDayNight: (isDay: boolean) => void,
+ *             dispose: () => void }}
  */
-export function createEnvironment(scene) {
+
+// Sky gradient palettes (LINEAR space; the post OutputPass tone-maps + sRGBs).
+const DAY_SKY_TOP = new THREE.Color(0x2b6fd6); // clear blue overhead at noon
+const DAY_SKY_HORIZON = new THREE.Color(0xbfe0f5); // pale haze at the horizon
+const NIGHT_SKY_TOP = new THREE.Color(0x05080f); // near-black zenith
+const NIGHT_SKY_HORIZON = new THREE.Color(0x141d33); // faint blue glow low down
+
+// Directions the sun / moon sit in, matched to the DirectionalLight positions
+// the LightingManager uses for each state so the cast light agrees with what's
+// visibly in the sky.
+const SUN_DIR = new THREE.Vector3(-150, 120, 50).normalize();
+const MOON_DIR = new THREE.Vector3(-100, 50, -100).normalize();
+const SKY_BODY_DISTANCE = 2200; // sits inside the 2800 sky dome
+
+export function createEnvironment() {
   const group = new THREE.Group();
   group.name = "Environment";
   const disposables = [];
 
-  // Shared dusk palette. The horizon haze doubles as the fog colour so the
-  // ground and skyline melt seamlessly into the sky at the horizon line.
-  const SKY_TOP = new THREE.Color(0x1b2a4a); // deep dusk blue overhead
-  const SKY_HORIZON = new THREE.Color(0x5b6680); // greyish-blue dusk haze
-  const SKY_WARM = new THREE.Color(0xe0915a); // warm sunset glow at the horizon
-
   // ---------------------------------------------------------------------------
-  // 1. Procedural sky — a huge inverted sphere with a gradient shader.
-  //    `fog: false` keeps it crisp; renderOrder -1 + depthWrite false draw it
-  //    behind everything without ever occluding the scene.
+  // 1. Procedural sky — a huge inverted sphere with a top→horizon gradient.
+  //    The two colours are uniforms so setDayNight() can repaint it instantly.
+  //    renderOrder -1 + depthWrite false keep it behind everything.
   // ---------------------------------------------------------------------------
   const skyGeo = new THREE.SphereGeometry(2800, 32, 16);
   const skyMat = new THREE.ShaderMaterial({
@@ -42,9 +42,8 @@ export function createEnvironment(scene) {
     depthWrite: false,
     fog: false,
     uniforms: {
-      uTop: { value: SKY_TOP },
-      uHorizon: { value: SKY_HORIZON },
-      uWarm: { value: SKY_WARM },
+      uTop: { value: NIGHT_SKY_TOP.clone() },
+      uHorizon: { value: NIGHT_SKY_HORIZON.clone() },
     },
     vertexShader: /* glsl */ `
       varying vec3 vDir;
@@ -53,18 +52,13 @@ export function createEnvironment(scene) {
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
     `,
-    // Colours are output in LINEAR space: the post-processing OutputPass applies
-    // ACES tone mapping + sRGB at the end, exactly like the standard materials.
     fragmentShader: /* glsl */ `
       uniform vec3 uTop;
       uniform vec3 uHorizon;
-      uniform vec3 uWarm;
       varying vec3 vDir;
       void main() {
-        float h = vDir.y;                                   // -1 (down) .. 1 (up)
-        vec3 col = mix(uHorizon, uTop, pow(clamp(h, 0.0, 1.0), 0.5));
-        float glow = pow(1.0 - clamp(abs(h) / 0.14, 0.0, 1.0), 2.0);
-        col = mix(col, uWarm, glow * 0.55);                 // warm band hugging horizon
+        float h = clamp(vDir.y, 0.0, 1.0);          // 0 at horizon, 1 overhead
+        vec3 col = mix(uHorizon, uTop, pow(h, 0.5));
         gl_FragColor = vec4(col, 1.0);
       }
     `,
@@ -75,24 +69,9 @@ export function createEnvironment(scene) {
   group.add(sky);
   disposables.push(skyGeo, skyMat);
 
-  // Matching dusk atmosphere: fog the distance into the horizon haze.
-  if (scene) {
-    scene.fog = new THREE.FogExp2(SKY_HORIZON.getHex(), 0.0011);
-    scene.background = SKY_HORIZON.clone();
-  }
-
   // ---------------------------------------------------------------------------
-  // 2. Soft outdoor fill. A hemisphere light (dusk sky above, dark grass below)
-  //    keeps the park readable without harsh shadows. Kept low so it doesn't
-  //    wash out the floodlights or the ceremony.
-  // ---------------------------------------------------------------------------
-  const hemi = new THREE.HemisphereLight(0x8aa0c8, 0x1a2a14, 0.45);
-  group.add(hemi);
-
-  // ---------------------------------------------------------------------------
-  // 3. Exterior ground — one massive dark-green disc at exactly y = 0.
-  //    polygonOffset pushes it a hair back in depth so the stadium's own floor
-  //    layers (track/infield, all near y=0) win and never z-fight with it.
+  // 2. Exterior ground — one massive dark-green disc at exactly y = 0.
+  //    polygonOffset pushes it a hair back so the stadium floor never z-fights.
   // ---------------------------------------------------------------------------
   const groundGeo = new THREE.CircleGeometry(2500, 64);
   const groundMat = new THREE.MeshStandardMaterial({
@@ -106,133 +85,156 @@ export function createEnvironment(scene) {
   const ground = new THREE.Mesh(groundGeo, groundMat);
   ground.name = "ExteriorGround";
   ground.rotation.x = -Math.PI / 2; // lay the disc flat
-  ground.position.y = 0;
-  ground.receiveShadow = false; // huge + far; the stadium handles its own shadows
   group.add(ground);
   disposables.push(groundGeo, groundMat);
 
-  // A reusable dummy used to compose each instance's transform matrix.
-  const dummy = new THREE.Object3D();
-
   // ---------------------------------------------------------------------------
-  // 4. Procedural nature — pine/cypress trees scattered on the park ground.
-  //    Each tree = brown trunk (Cylinder) + dark-green foliage (Cone). Two
-  //    InstancedMeshes (all trunks, all cones) draw the whole forest in 2 calls.
+  // 3. Sun (day only) — a bright core disc with a soft additive halo, parked in
+  //    the sky along the daytime light direction.
   // ---------------------------------------------------------------------------
-  const TREE_COUNT = 260;
-  const TREE_MIN_RADIUS = BOWL_TOP_RADIUS + 30; // clear the stands (~126)
-  const TREE_MAX_RADIUS = 650;
-
-  // Bake the part offsets into the geometry so each tree is placed with a single
-  // (position, rotation, uniform-scale) matrix and the parts stay stuck together.
-  const TRUNK_H = 2.4;
-  const CONE_H = 7.5;
-  const trunkGeo = new THREE.CylinderGeometry(0.22, 0.34, TRUNK_H, 6);
-  trunkGeo.translate(0, TRUNK_H / 2, 0); // base sits on the ground (y = 0)
-  const coneGeo = new THREE.ConeGeometry(1.5, CONE_H, 7);
-  coneGeo.translate(0, TRUNK_H + CONE_H / 2, 0); // foliage stacked on the trunk
-
-  const trunkMat = new THREE.MeshStandardMaterial({
-    color: 0x5b4636,
-    roughness: 0.95,
-    metalness: 0.0,
+  const sun = new THREE.Group();
+  sun.name = "Sun";
+  const sunCoreGeo = new THREE.SphereGeometry(95, 24, 16);
+  const sunCoreMat = new THREE.MeshBasicMaterial({ color: 0xfff3bf, fog: false });
+  sun.add(new THREE.Mesh(sunCoreGeo, sunCoreMat));
+  const sunHaloGeo = new THREE.SphereGeometry(175, 24, 16);
+  const sunHaloMat = new THREE.MeshBasicMaterial({
+    color: 0xffe39a,
+    transparent: true,
+    opacity: 0.25,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    fog: false,
   });
-  // Base white so per-instance instanceColor tints each tree's foliage directly.
-  const coneMat = new THREE.MeshStandardMaterial({
+  sun.add(new THREE.Mesh(sunHaloGeo, sunHaloMat));
+  sun.position.copy(SUN_DIR).multiplyScalar(SKY_BODY_DISTANCE);
+  group.add(sun);
+  disposables.push(sunCoreGeo, sunCoreMat, sunHaloGeo, sunHaloMat);
+
+  // ---------------------------------------------------------------------------
+  // 4. Clouds (day only) — clusters of flat white puffs scattered high up. One
+  //    shared geometry + material; clusters are plain Meshes (cheap, ~40 total).
+  // ---------------------------------------------------------------------------
+  const clouds = new THREE.Group();
+  clouds.name = "Clouds";
+  const puffGeo = new THREE.SphereGeometry(1, 12, 8);
+  const puffMat = new THREE.MeshBasicMaterial({
     color: 0xffffff,
-    roughness: 0.9,
-    metalness: 0.0,
+    transparent: true,
+    opacity: 0.92,
+    fog: false,
   });
-
-  const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, TREE_COUNT);
-  const cones = new THREE.InstancedMesh(coneGeo, coneMat, TREE_COUNT);
-  trunks.name = "TreeTrunks";
-  cones.name = "TreeFoliage";
-
-  const foliage = new THREE.Color();
-  for (let i = 0; i < TREE_COUNT; i++) {
+  const CLOUD_COUNT = 9;
+  for (let i = 0; i < CLOUD_COUNT; i++) {
+    const cluster = new THREE.Group();
     const ang = Math.random() * Math.PI * 2;
-    const rad =
-      TREE_MIN_RADIUS + Math.random() * (TREE_MAX_RADIUS - TREE_MIN_RADIUS);
-    const s = 0.7 + Math.random() * 0.9; // size variation
-
-    dummy.position.set(Math.cos(ang) * rad, 0, Math.sin(ang) * rad);
-    dummy.rotation.set(0, Math.random() * Math.PI * 2, 0);
-    dummy.scale.setScalar(s);
-    dummy.updateMatrix();
-
-    trunks.setMatrixAt(i, dummy.matrix);
-    cones.setMatrixAt(i, dummy.matrix);
-
-    // Slight per-tree green variation so the forest isn't a flat colour.
-    foliage.setHSL(0.28 + Math.random() * 0.05, 0.45, 0.18 + Math.random() * 0.1);
-    cones.setColorAt(i, foliage);
+    const rad = 500 + Math.random() * 1100;
+    cluster.position.set(
+      Math.cos(ang) * rad,
+      380 + Math.random() * 260,
+      Math.sin(ang) * rad,
+    );
+    const puffs = 4 + Math.floor(Math.random() * 4);
+    for (let p = 0; p < puffs; p++) {
+      const puff = new THREE.Mesh(puffGeo, puffMat);
+      puff.position.set(
+        (Math.random() - 0.5) * 160,
+        (Math.random() - 0.5) * 30,
+        (Math.random() - 0.5) * 80,
+      );
+      // Flatten each puff so the cluster reads as a horizontal cloud, not balls.
+      puff.scale.set(
+        40 + Math.random() * 50,
+        18 + Math.random() * 16,
+        30 + Math.random() * 40,
+      );
+      cluster.add(puff);
+    }
+    clouds.add(cluster);
   }
-  trunks.instanceMatrix.needsUpdate = true;
-  cones.instanceMatrix.needsUpdate = true;
-  if (cones.instanceColor) cones.instanceColor.needsUpdate = true;
-  group.add(trunks, cones);
-  disposables.push(trunkGeo, trunkMat, coneGeo, coneMat);
+  group.add(clouds);
+  disposables.push(puffGeo, puffMat);
 
   // ---------------------------------------------------------------------------
-  // 5. Distant city skyline — grey boxes of varied size on a far ring. A minority
-  //    use an emissive material to read as lit windows. Two InstancedMeshes
-  //    (dark + lit) draw the whole skyline in 2 calls.
+  // 5. Moon (night only) — a pale disc with a faint halo along the night light
+  //    direction.
   // ---------------------------------------------------------------------------
-  const SKYLINE_MIN_RADIUS = 950;
-  const SKYLINE_MAX_RADIUS = 1250;
-  const DARK_COUNT = 64;
-  const LIT_COUNT = 24;
-
-  const boxGeo = new THREE.BoxGeometry(1, 1, 1);
-  boxGeo.translate(0, 0.5, 0); // base on the ground; scale.y becomes the height
-
-  const cityMat = new THREE.MeshStandardMaterial({
-    color: 0x3a3f4a,
-    roughness: 0.85,
-    metalness: 0.05,
+  const moon = new THREE.Group();
+  moon.name = "Moon";
+  const moonCoreGeo = new THREE.SphereGeometry(80, 24, 16);
+  const moonCoreMat = new THREE.MeshBasicMaterial({ color: 0xeae6d0, fog: false });
+  moon.add(new THREE.Mesh(moonCoreGeo, moonCoreMat));
+  const moonHaloGeo = new THREE.SphereGeometry(130, 24, 16);
+  const moonHaloMat = new THREE.MeshBasicMaterial({
+    color: 0xaab6d8,
+    transparent: true,
+    opacity: 0.18,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    fog: false,
   });
-  const litMat = new THREE.MeshStandardMaterial({
-    color: 0x3a3f4a,
-    emissive: 0xffcc66, // warm distant window light
-    emissiveIntensity: 0.5,
-    roughness: 0.85,
-    metalness: 0.05,
+  moon.add(new THREE.Mesh(moonHaloGeo, moonHaloMat));
+  moon.position.copy(MOON_DIR).multiplyScalar(SKY_BODY_DISTANCE);
+  group.add(moon);
+  disposables.push(moonCoreGeo, moonCoreMat, moonHaloGeo, moonHaloMat);
+
+  // ---------------------------------------------------------------------------
+  // 6. Stars (night only) — a Points field on a sphere just inside the dome.
+  // ---------------------------------------------------------------------------
+  const STAR_COUNT = 1500;
+  const starPositions = new Float32Array(STAR_COUNT * 3);
+  const starV = new THREE.Vector3();
+  for (let i = 0; i < STAR_COUNT; i++) {
+    // Random direction biased to the upper hemisphere (visible above the ground).
+    starV.set(
+      Math.random() * 2 - 1,
+      Math.random() * 0.9 + 0.05,
+      Math.random() * 2 - 1,
+    );
+    if (starV.lengthSq() < 1e-4) starV.set(0, 1, 0);
+    starV.normalize().multiplyScalar(2700);
+    starPositions[i * 3] = starV.x;
+    starPositions[i * 3 + 1] = starV.y;
+    starPositions[i * 3 + 2] = starV.z;
+  }
+  const starGeo = new THREE.BufferGeometry();
+  starGeo.setAttribute("position", new THREE.BufferAttribute(starPositions, 3));
+  const starMat = new THREE.PointsMaterial({
+    color: 0xffffff,
+    size: 2.2,
+    sizeAttenuation: false,
+    transparent: true,
+    opacity: 0.9,
+    depthWrite: false,
+    fog: false,
   });
+  const stars = new THREE.Points(starGeo, starMat);
+  stars.name = "Stars";
+  group.add(stars);
+  disposables.push(starGeo, starMat);
 
-  const placeBuilding = (mesh, i) => {
-    const ang = Math.random() * Math.PI * 2;
-    const rad =
-      SKYLINE_MIN_RADIUS +
-      Math.random() * (SKYLINE_MAX_RADIUS - SKYLINE_MIN_RADIUS);
-    const w = 18 + Math.random() * 40;
-    const d = 18 + Math.random() * 40;
-    const h = 40 + Math.random() * 130;
+  /**
+   * Swap the whole sky between noon and 10 pm: repaint the gradient and show the
+   * sun + clouds (day) or the moon + stars (night).
+   * @param {boolean} isDay
+   */
+  function setDayNight(isDay) {
+    skyMat.uniforms.uTop.value.copy(isDay ? DAY_SKY_TOP : NIGHT_SKY_TOP);
+    skyMat.uniforms.uHorizon.value.copy(
+      isDay ? DAY_SKY_HORIZON : NIGHT_SKY_HORIZON,
+    );
+    sun.visible = isDay;
+    clouds.visible = isDay;
+    moon.visible = !isDay;
+    stars.visible = !isDay;
+  }
 
-    dummy.position.set(Math.cos(ang) * rad, 0, Math.sin(ang) * rad);
-    dummy.rotation.set(0, Math.random() * Math.PI * 2, 0);
-    dummy.scale.set(w, h, d);
-    dummy.updateMatrix();
-    mesh.setMatrixAt(i, dummy.matrix);
-  };
-
-  const city = new THREE.InstancedMesh(boxGeo, cityMat, DARK_COUNT);
-  const cityLit = new THREE.InstancedMesh(boxGeo, litMat, LIT_COUNT);
-  city.name = "Skyline";
-  cityLit.name = "SkylineLit";
-  for (let i = 0; i < DARK_COUNT; i++) placeBuilding(city, i);
-  for (let i = 0; i < LIT_COUNT; i++) placeBuilding(cityLit, i);
-  city.instanceMatrix.needsUpdate = true;
-  cityLit.instanceMatrix.needsUpdate = true;
-  group.add(city, cityLit);
-  disposables.push(boxGeo, cityMat, litMat);
+  // The scene boots at night (10 pm) to match the LightingManager's default.
+  setDayNight(false);
 
   return {
     group,
-    // Handles the GUI can poke at to demo the environment live.
-    trees: [trunks, cones],
-    skyline: [city, cityLit],
-    fog: scene ? scene.fog : null,
+    setDayNight,
     dispose: () => disposables.forEach((d) => d.dispose()),
   };
 }

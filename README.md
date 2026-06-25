@@ -13,10 +13,10 @@ Built as a final project for the **Interactive Graphics** course
 
 ## 🔗 Live Demo
 
-> ### 👉 **[VIEW THE LIVE DEMO](https://REPLACE-ME.github.io/REPLACE-REPO/)** 👈
+> ### 👉 **[VIEW THE LIVE DEMO](https://m-giuliani.github.io/interactive-olympic-stadium/)** 👈
 >
-> _Replace the link above with your GitHub Pages URL once deployed_
-> _(typically `https://<your-username>.github.io/<your-repo>/`)._
+> _Served from GitHub Pages on the `main` branch (root). If the link 404s, enable
+> Pages under **Settings → Pages** (see [Deploying](#-deploying-to-github-pages))._
 
 ---
 
@@ -97,8 +97,9 @@ npx serve .
 ```
 src/
   core/        # renderer, scene, camera, animation loop, resize, post-processing
-  stadium/     # track, field, stands, exterior (facade + pillars), tensile roof
-               #   (membrane + truss + LED matrix), LED ribbon, environment, config
+  stadium/     # track, field, stands, apron, exterior (facade + pillars), tensile
+               #   roof (membrane + truss + LED matrix), LED ribbon, goal,
+               #   long-jump pit, environment, config
   athletes/    # hierarchical athlete model + hand-written joint poses
   events/      # sprint / long jump / football + ceremony state machines
   lighting/    # hemisphere fill, moon, roof-mounted LED floodlights

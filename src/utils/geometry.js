@@ -62,6 +62,53 @@ export function discorectangleShape(straightHalf, radius, arcSegments = 64) {
 }
 
 /**
+ * Returns a sampler for the discorectangle perimeter, parametrised by ARC LENGTH
+ * on a single reference radius. Because both the inner and outer rings are read
+ * through the SAME parametrisation, a given `u` yields radially-aligned points at
+ * any radius `R` — essential for stitching clean raked segments (the seating
+ * blocks) whose inner-low and outer-high edges must line up.
+ *
+ * `u ∈ [0,1)` walks the whole oval once: right semicircle → top straight → left
+ * semicircle → bottom straight (matching discorectanglePoints' winding).
+ *
+ * @param {number} straightHalf half-length of each straight.
+ * @param {number} referenceRadius radius whose arc lengths set the parametrisation.
+ * @returns {(R: number, u: number, out?: THREE.Vector2) => THREE.Vector2}
+ */
+export function createDiscorectangleSampler(straightHalf, referenceRadius) {
+  const s = straightHalf;
+  const arcLen = Math.PI * referenceRadius;
+  const straightLen = 2 * s;
+  const P = 2 * arcLen + 2 * straightLen;
+
+  return function sample(R, u, out = new THREE.Vector2()) {
+    let d = (((u % 1) + 1) % 1) * P; // wrap u into [0,1) then to arc length
+
+    if (d <= arcLen) {
+      // Right semicircle, centre (+s, 0), sweeping -90° → +90°.
+      const a = -Math.PI / 2 + (d / arcLen) * Math.PI;
+      return out.set(s + R * Math.cos(a), R * Math.sin(a));
+    }
+    d -= arcLen;
+    if (d <= straightLen) {
+      // Top straight, from (+s, +R) to (-s, +R).
+      const t = d / straightLen;
+      return out.set(s - t * 2 * s, R);
+    }
+    d -= straightLen;
+    if (d <= arcLen) {
+      // Left semicircle, centre (-s, 0), sweeping +90° → +270°.
+      const a = Math.PI / 2 + (d / arcLen) * Math.PI;
+      return out.set(-s + R * Math.cos(a), R * Math.sin(a));
+    }
+    d -= arcLen;
+    // Bottom straight, from (-s, -R) back to (+s, -R).
+    const t = d / straightLen;
+    return out.set(-s + t * 2 * s, -R);
+  };
+}
+
+/**
  * Builds a "ribbon" surface between two corresponding discorectangle loops —
  * used for the flat track ring (both loops on the ground) and the raked seating
  * bowl (inner loop low, outer loop high).

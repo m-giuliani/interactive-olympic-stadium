@@ -19,7 +19,7 @@ export function createCamera(domElement) {
     50, // vertical FOV in degrees
     window.innerWidth / window.innerHeight,
     0.3, // near — raised from 0.1 to keep depth precision after extending far
-    3500, // far — reaches the distant skyline + skydome (see stadium/environment.js)
+    3500, // far — reaches the sky dome + sun/moon (see stadium/environment.js)
   );
   // Start close to the runner's start line, side-on from the infield, so the
   // joint animation is easy to judge. The sprint lane is at z ~ 40.8 and the

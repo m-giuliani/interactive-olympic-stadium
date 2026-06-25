@@ -31,7 +31,7 @@ export function createStadium() {
   group.add(field.group);
   group.add(track.mesh);
   group.add(apron.group);
-  group.add(stands.mesh);
+  group.add(stands.group);
   group.add(exterior.group);
   group.add(roof.group);
 

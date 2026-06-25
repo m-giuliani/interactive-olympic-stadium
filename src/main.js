@@ -6,11 +6,14 @@ import { Loop } from "./core/loop.js";
 
 import { createPostProcessing } from "./core/postprocessing.js";
 import { createStadium } from "./stadium/stadium.js";
+import { createStadiumPlan } from "./stadium/stadiumPlan.js";
+import { createStadiumPlanDebug } from "./stadium/stadiumPlanDebug.js";
 import { createEnvironment } from "./stadium/environment.js";
 import { createLedRibbon } from "./stadium/ledRibbon.js";
 import { createLongJumpPit } from "./stadium/longJumpPit.js";
 import { createGoal } from "./stadium/goal.js";
 import { createLighting } from "./lighting/lighting.js";
+import { LightingManager } from "./lighting/lightingManager.js";
 import { Athlete } from "./athletes/athlete.js";
 import { SprintEvent } from "./events/sprint.js";
 import { LongJumpEvent } from "./events/longJump.js";
@@ -46,9 +49,23 @@ function init() {
   const stadium = createStadium();
   scene.add(stadium.group);
 
-  // Procedural exterior (dusk sky, park trees, distant skyline). Passing `scene`
-  // lets it install a matching dusk fog + background.
-  const environment = createEnvironment(scene);
+  // Seating-bowl refactor: the StadiumPlan footprint + a debug overlay to verify
+  // it (press 'P' to toggle). The plan now also drives the seating geometry in
+  // stadium/stands.js (BowlGenerator).
+  const stadiumPlan = createStadiumPlan();
+  const planDebug = createStadiumPlanDebug(stadiumPlan);
+  planDebug.group.visible = false; // off by default now; press 'P' to compare
+  scene.add(planDebug.group);
+  console.log(
+    `[StadiumPlan] perimeter ${stadiumPlan.perimeter.toFixed(1)} m`,
+    stadiumPlan.sectors.map(
+      (s) => `${s.id}: u ${s.u0.toFixed(3)}→${s.u1.toFixed(3)} (${s.kind})`,
+    ),
+  );
+
+  // Procedural exterior: a Day/Night sky dome with sun + clouds or moon + stars.
+  // The LightingManager switches it in lockstep with the lights.
+  const environment = createEnvironment();
   scene.add(environment.group);
 
   const led = createLedRibbon();
@@ -63,7 +80,27 @@ function init() {
   const lighting = createLighting(stadium.lightAnchors);
   scene.add(lighting.group);
 
+  // Central Lighting Controller: enforces the mutually-exclusive Day/Night state
+  // across the sun, the 8 roof floodlights, and their emissive enclosures.
+  const lightingManager = new LightingManager(
+    lighting,
+    stadium.roofLeds,
+    scene,
+    environment,
+  );
+
   const hud = makeHud();
+
+  // Quick keyboard test: 'L' flips Day/Night; 'P' toggles the StadiumPlan debug.
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "l" || e.key === "L") {
+      const isDay = lightingManager.toggle();
+      hud(isDay ? "☀️ Day" : "🌙 Night");
+    } else if (e.key === "p" || e.key === "P") {
+      planDebug.group.visible = !planDebug.group.visible;
+      hud(planDebug.group.visible ? "Plan debug ON" : "Plan debug OFF");
+    }
+  });
 
   // Director AI (broadcast / spider / action / free). Created before the events
   // so the football can re-point it at the ball mid-flight; drives DoF focus.
@@ -99,7 +136,14 @@ function init() {
   });
 
   // GUI controls (director mode + sports events + ceremony toggle).
-  createGUI({ sprint, longJump, football, ceremony, environment, director });
+  createGUI({
+    sprint,
+    longJump,
+    football,
+    ceremony,
+    director,
+    lightingManager,
+  });
 
   // Per-frame updates (single loop, CLAUDE.md §6).
   // ORDER MATTERS: every subject must move BEFORE the director reads its position,
