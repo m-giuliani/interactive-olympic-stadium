@@ -245,3 +245,59 @@ export function makeNetTexture() {
 
   return asColorTexture(canvas);
 }
+
+/**
+ * 100 m finish-line decal: a thick solid white line across all lanes, with bold
+ * lane numbers 1..N painted just downstream of it, on a TRANSPARENT background
+ * so it reads as paint on the track (no checkered tape, no physical ribbon).
+ * Generated entirely on a <canvas> — no image files (CLAUDE.md §5).
+ *
+ * Canvas → world mapping (see stadium/finishLine.js):
+ *   - HEIGHT (V) is the lane axis: lane 1 at the top … lane N at the bottom,
+ *     which maps to inner → outer lane on the track.
+ *   - WIDTH (U) is the running direction: the white line sits at mid-width and
+ *     the numbers just after it (downstream, the +X side athletes run toward).
+ * Each number is rotated 180° so it reads upright from the main (+Z) stand.
+ *
+ * @param {number} laneCount
+ * @param {number} aspect  bandDepth / trackWidth, so the canvas (and therefore
+ *                         the glyphs) keep the plane's real-world proportions.
+ * @returns {THREE.CanvasTexture}
+ */
+export function makeFinishLineTexture(laneCount = 8, aspect = 0.225) {
+  const lanePx = 128; // resolution per lane along the lane axis
+  const h = lanePx * laneCount; // V = lanes
+  const w = Math.max(64, Math.round(h * aspect)); // U = running direction
+  const canvas = makeCanvas(w, h);
+  const ctx = canvas.getContext("2d");
+
+  ctx.clearRect(0, 0, w, h); // transparent background
+
+  // Thick solid white finish line, centred across the band, spanning all lanes.
+  const lineW = Math.round(w * 0.07);
+  const lineX = Math.round(w * 0.5 - lineW / 2);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(lineX, 0, lineW, h);
+
+  // Bold lane numbers, one per lane, just AFTER the line (downstream).
+  ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `bold ${Math.round(lanePx * 0.6)}px Arial, sans-serif`;
+  const numX = lineX + lineW + Math.round(w * 0.18);
+  for (let i = 0; i < laneCount; i++) {
+    const cy = (i + 0.5) * lanePx; // lane i centre (lane 1 at the top)
+    ctx.save();
+    ctx.translate(numX, cy);
+    ctx.rotate(Math.PI); // face the main stand once laid on the ground
+    ctx.fillText(String(i + 1), 0, 0);
+    ctx.restore();
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = ANISOTROPY;
+  tex.wrapS = THREE.ClampToEdgeWrapping; // a single decal — never tiled
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  return tex;
+}

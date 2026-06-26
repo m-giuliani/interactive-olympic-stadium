@@ -34,22 +34,33 @@ const P = {
 };
 
 export class Athlete {
-  constructor() {
+  /**
+   * @param {{ skin?: number, singlet?: number, shorts?: number, shoe?: number }} [kit]
+   *   Optional kit colours so the same parametric rig can field different teams
+   *   (CLAUDE.md §7: reusable). Defaults preserve the original athletics look.
+   */
+  constructor(kit = {}) {
     this.root = new THREE.Group();
     this.root.name = "Athlete";
 
     this._geos = [];
     this.materials = {
-      skin: new THREE.MeshStandardMaterial({ color: 0xd9a06b, roughness: 0.7 }),
+      skin: new THREE.MeshStandardMaterial({
+        color: kit.skin ?? 0xd9a06b,
+        roughness: 0.7,
+      }),
       singlet: new THREE.MeshStandardMaterial({
-        color: 0x1565c0,
+        color: kit.singlet ?? 0x1565c0,
         roughness: 0.6,
       }),
       shorts: new THREE.MeshStandardMaterial({
-        color: 0x0d3b8c,
+        color: kit.shorts ?? 0x0d3b8c,
         roughness: 0.6,
       }),
-      shoe: new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.5 }),
+      shoe: new THREE.MeshStandardMaterial({
+        color: kit.shoe ?? 0xf5f5f5,
+        roughness: 0.5,
+      }),
     };
 
     this._build();

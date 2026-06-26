@@ -20,12 +20,20 @@ import * as THREE from "three";
  * Also drives the depth-of-field focus distance if a BokehPass is supplied.
  */
 
-const BROADCAST_POS = new THREE.Vector3(0, 30, 80); // gantry in the main stand
+const BROADCAST_POS = new THREE.Vector3(0, 20, 80); // gantry in the main stand
 const SPIDER_HEIGHT = 48;
 const SPIDER_TRAIL = 8; // how far the spider-cam trails behind the athlete (m)
 const FLY_SPEED = 32; // m/s for WASD movement
 const LEAD_MAX = 7; // max look-ahead distance (m) ahead of a moving subject
 const UP = new THREE.Vector3(0, 1, 0);
+
+// First-person "Free Explore": OrbitControls is reused, but the orbit target is
+// pinned a hair in front of the camera so dragging rotates the head in place
+// (look-around) instead of orbiting a distant pivot. LOOK_DIST is that tiny
+// pivot radius; DOF_AHEAD is where depth-of-field focuses so the near pivot does
+// not blur the whole scene.
+const LOOK_DIST = 0.15;
+const DOF_AHEAD = 30;
 
 export class Director {
   /**
@@ -113,9 +121,22 @@ export class Director {
       this.camera.updateProjectionMatrix();
     }
     if (free) {
-      this.controls.target.copy(this._focus);
+      // Reconfigure OrbitControls for first-person look-around: allow the orbit
+      // radius to shrink right down to the near pivot, and free up the pitch so
+      // the user can look up and down (the orbit-style ground guard no longer
+      // applies because the camera no longer orbits a distant point).
+      this.controls.minDistance = 0.01;
+      this.controls.minPolarAngle = 0.05; // just shy of straight up
+      this.controls.maxPolarAngle = Math.PI - 0.05; // just shy of straight down
+      this._pinTargetInFront(); // park the target a hair ahead of the camera
       this.controls.update();
     }
+  }
+
+  /** Keep the orbit target a tiny distance directly in front of the camera. */
+  _pinTargetInFront() {
+    const fwd = this.camera.getWorldDirection(this._v1);
+    this.controls.target.copy(this.camera.position).addScaledVector(fwd, LOOK_DIST);
   }
 
   /**
@@ -155,9 +176,22 @@ export class Director {
     );
 
     if (this.mode === "free") {
-      this._flyFree(dt);
+      // ORDER MATTERS for the first-person trick:
+      // 1) apply this frame's mouse-drag, which rotates the camera about the near
+      //    pivot (look-around) since the target sits a hair in front of it;
+      // 2) THEN translate with WASD, so the fly move is authoritative and is not
+      //    rewritten by OrbitControls until next frame;
+      // 3) re-pin the target just ahead of the new pose for the next drag;
+      // 4) focus DoF well ahead, not on the 0.15 m pivot, so the scene stays sharp.
       this.controls.update();
-      this._updateDof(this.controls.target);
+      this._flyFree(dt);
+      this._pinTargetInFront();
+      this._updateDof(
+        this._v2.copy(this.camera.position).addScaledVector(
+          this.camera.getWorldDirection(this._v1),
+          DOF_AHEAD,
+        ),
+      );
       return;
     }
 
@@ -323,7 +357,12 @@ export class Director {
     }
   }
 
-  /** WASD/QE free-fly: translate the whole orbit rig through the volume. */
+  /**
+   * WASD/QE free-fly. W/S fly along the full look direction (so looking up and
+   * pressing W ascends — "fly where you look"), D/A strafe horizontally, E/Q
+   * rise/fall. Only the camera position is moved here; the look-around target is
+   * re-pinned in front afterwards (see update()).
+   */
   _flyFree(dt) {
     const k = this._keys;
     const fwd = (k.has("KeyW") ? 1 : 0) - (k.has("KeyS") ? 1 : 0);
@@ -331,22 +370,23 @@ export class Director {
     const rise = (k.has("KeyE") ? 1 : 0) - (k.has("KeyQ") ? 1 : 0);
     if (!fwd && !strafe && !rise) return;
 
-    const dir = this.camera.getWorldDirection(this._v1);
-    dir.y = 0;
-    if (dir.lengthSq() < 1e-6) dir.set(0, 0, -1);
-    dir.normalize();
-    const right = this._v2.crossVectors(dir, UP).normalize();
+    // Full 3D look direction for forward/back.
+    const look = this.camera.getWorldDirection(this._v1);
+    // Strafe basis from the horizontal projection of the look (stays level and
+    // avoids a degenerate cross product when looking straight up or down).
+    const flat = this._v2.set(look.x, 0, look.z);
+    if (flat.lengthSq() < 1e-6) flat.set(0, 0, -1);
+    flat.normalize();
+    const right = this._v3.crossVectors(flat, UP).normalize();
 
-    const move = this._v3.set(0, 0, 0);
-    move.addScaledVector(dir, fwd);
+    const move = this._desired.set(0, 0, 0);
+    move.addScaledVector(look, fwd);
     move.addScaledVector(right, strafe);
     move.addScaledVector(UP, rise);
     if (move.lengthSq() === 0) return;
     move.normalize().multiplyScalar(FLY_SPEED * dt);
 
-    // Move camera AND target together so OrbitControls keeps the framing.
     this.camera.position.add(move);
-    this.controls.target.add(move);
   }
 
   /** Drive the depth-of-field focus distance toward the look point. */

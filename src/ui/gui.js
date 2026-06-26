@@ -3,25 +3,17 @@ import GUI from "lil-gui";
 /**
  * lil-gui control panel (CLAUDE.md §3, MVP requirement).
  *
- * The user may: choose a Director (camera) mode, start/reset the sports events,
- * and toggle the opening ceremony.
+ * The user may: choose a Director (camera) mode, start the sports events (one at
+ * a time — picking one tears down the previous), clear the field, and toggle the
+ * opening ceremony.
  *
- * @param {{ sprint: import("../events/sprint.js").SprintEvent,
- *           longJump?: import("../events/longJump.js").LongJumpEvent,
- *           football?: import("../events/football.js").FootballEvent,
+ * @param {{ events: import("../events/eventManager.js").EventManager,
  *           ceremony?: import("../events/ceremony.js").Ceremony,
  *           director: import("../cameras/director.js").Director,
  *           lightingManager?: import("../lighting/lightingManager.js").LightingManager }} ctx
  * @returns {GUI}
  */
-export function createGUI({
-  sprint,
-  longJump,
-  football,
-  ceremony,
-  director,
-  lightingManager,
-}) {
+export function createGUI({ events, ceremony, director, lightingManager }) {
   const gui = new GUI({ title: "Olympic Stadium" });
 
   // --- Day / Night ----------------------------------------------------------
@@ -36,6 +28,8 @@ export function createGUI({
   }
 
   // --- Director (camera) modes ----------------------------------------------
+  // Broadcast is the default view; the EventManager also snaps back to it on
+  // every event switch, so we keep this dropdown in sync below.
   const camFolder = gui.addFolder("Director");
   const camModes = {
     "Broadcast TV": "broadcast",
@@ -43,33 +37,38 @@ export function createGUI({
     "Action Track": "action",
     "Free Explore": "free",
   };
-  const camState = { mode: "free" };
+  const camState = { mode: director.mode };
   const modeCtrl = camFolder
     .add(camState, "mode", camModes)
     .name("Mode")
     .onChange((v) => director.setMode(v));
 
-  // --- Sports events ---------------------------------------------------------
-  // Starting an event makes it the Director's active subject. If the user is in
-  // Free Explore (which ignores the subject), snap to Action Track so the event
-  // is actually framed instead of the view appearing "stuck".
-  const wireEvent = (folderName, event, startLabel, subjectType) => {
-    const folder = gui.addFolder(folderName);
-    const actions = {
-      start: () => {
-        event.start();
-        director.setSubject(event.athlete.root, subjectType);
-        if (director.mode === "free") modeCtrl.setValue("action");
-      },
-      reset: () => event.reset(),
-    };
-    folder.add(actions, "start").name(startLabel);
-    folder.add(actions, "reset").name("↺ Reset");
+  // --- Sports events (one at a time) ----------------------------------------
+  // Triggering an event routes through the EventManager: it tears down the
+  // previous sport (disposing its athletes/props), resets the camera to
+  // Broadcast, then builds and starts the requested one fresh.
+  const playEvent = (key) => {
+    events.play(key);
+    // Reflect the manager's forced Broadcast reset in the dropdown without
+    // re-firing onChange (which would call director.setMode redundantly).
+    camState.mode = director.mode;
+    modeCtrl.updateDisplay();
   };
 
-  wireEvent("Sprint event", sprint, "▶ Start race", "sprinter");
-  if (longJump) wireEvent("Long jump", longJump, "▶ Start long jump", "jumper");
-  if (football) wireEvent("Football", football, "▶ Start football", "football");
+  const wireEvent = (folderName, key, startLabel) => {
+    const folder = gui.addFolder(folderName);
+    folder.add({ start: () => playEvent(key) }, "start").name(startLabel);
+  };
+
+  wireEvent("Sprint event", "sprint", "▶ Start race");
+  wireEvent("Long jump", "longJump", "▶ Start long jump");
+  wireEvent("Football", "football", "▶ Start football");
+
+  // Clear the field entirely (tear down the active sport, hand the camera back
+  // to the roaming drone).
+  gui
+    .add({ clear: () => events.clear() }, "clear")
+    .name("■ Clear field");
 
   // --- Opening ceremony ------------------------------------------------------
   if (ceremony) {

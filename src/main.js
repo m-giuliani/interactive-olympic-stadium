@@ -14,10 +14,10 @@ import { createLongJumpPit } from "./stadium/longJumpPit.js";
 import { createGoal } from "./stadium/goal.js";
 import { createLighting } from "./lighting/lighting.js";
 import { LightingManager } from "./lighting/lightingManager.js";
-import { Athlete } from "./athletes/athlete.js";
 import { SprintEvent } from "./events/sprint.js";
 import { LongJumpEvent } from "./events/longJump.js";
 import { FootballEvent } from "./events/football.js";
+import { EventManager } from "./events/eventManager.js";
 import { Ceremony } from "./events/ceremony.js";
 import { Director } from "./cameras/director.js";
 import { createGUI } from "./ui/gui.js";
@@ -108,21 +108,15 @@ function init() {
     bokehPass: postFx.bokehPass,
   });
 
-  // Sprint athlete + event.
-  const athlete = new Athlete();
-  scene.add(athlete.root);
-  const sprint = new SprintEvent(athlete, { onStatus: hud });
-
-  // A second instance of the same parametric rig drives the long jump (§7).
-  const jumper = new Athlete();
-  scene.add(jumper.root);
-  const longJump = new LongJumpEvent(jumper, { onStatus: hud });
-
-  // A third instance drives the football exhibition; the event owns the ball.
-  const footballer = new Athlete();
-  scene.add(footballer.root);
-  const football = new FootballEvent(footballer, { onStatus: hud, director });
-  scene.add(football.ball);
+  // "One sport at a time" controller (CLAUDE.md §6): each event is registered as
+  // a FACTORY so it is built fresh on demand and fully torn down (athletes,
+  // materials, textures disposed) when the next sport is triggered. The manager
+  // also resets the camera to the default Broadcast view on every switch.
+  const events = new EventManager({ scene, director, onStatus: hud });
+  events
+    .register("sprint", (ctx) => new SprintEvent(ctx))
+    .register("longJump", (ctx) => new LongJumpEvent(ctx))
+    .register("football", (ctx) => new FootballEvent(ctx));
 
   // Ceremony mode (dynamic lights, LED/emissive, bloom, cinematic camera).
   const ceremony = new Ceremony({
@@ -135,11 +129,12 @@ function init() {
     onStatus: hud,
   });
 
+  // Start in the default Broadcast view (CLAUDE.md: Broadcast is the default).
+  director.setMode("broadcast");
+
   // GUI controls (director mode + sports events + ceremony toggle).
   createGUI({
-    sprint,
-    longJump,
-    football,
+    events,
     ceremony,
     director,
     lightingManager,
@@ -150,9 +145,7 @@ function init() {
   // otherwise the camera tracks last frame's pose and stutters. Keep
   // director.update() strictly LAST.
   loop.add((delta) => {
-    sprint.update(delta);
-    longJump.update(delta);
-    football.update(delta);
+    events.update(delta);
     ceremony.update(delta);
     director.update(delta);
   });
