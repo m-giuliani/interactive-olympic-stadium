@@ -124,13 +124,26 @@ export class Athlete {
   _build() {
     const m = this.materials;
 
-    // Pelvis (root of the body hierarchy).
+    // Pelvis (root of the body hierarchy): a rounded, hip-wide mass — a flattened
+    // capsule instead of a rigid box, so the hips read as organic.
     const pelvis = this._joint(this.root, 0, P.hipY, 0);
-    this._box(pelvis, 0.22, 0.18, 0.3, m.shorts);
+    const pelvisGeo = new THREE.CapsuleGeometry(0.12, 0.06, 6, 16);
+    this._geos.push(pelvisGeo);
+    const pelvisMesh = new THREE.Mesh(pelvisGeo, m.shorts);
+    pelvisMesh.scale.set(0.85, 0.7, 1.25); // shallow front-back, wide across the hips
+    pelvisMesh.castShadow = true;
+    pelvis.add(pelvisMesh);
 
-    // Torso grows upward from the pelvis.
+    // Torso: a gently tapered, athletic trunk — broad across the chest/shoulders
+    // narrowing to the waist (a tapered cylinder, not a box).
     const torso = this._joint(pelvis, 0, 0.09, 0);
-    this._box(torso, 0.24, P.torso, 0.34, m.singlet, [0, P.torso / 2, 0]);
+    const torsoGeo = new THREE.CylinderGeometry(0.17, 0.12, P.torso, 16, 1);
+    this._geos.push(torsoGeo);
+    const torsoMesh = new THREE.Mesh(torsoGeo, m.singlet);
+    torsoMesh.position.y = P.torso / 2;
+    torsoMesh.scale.set(0.8, 1, 1.2); // flatten front-back, widen across the shoulders
+    torsoMesh.castShadow = true;
+    torso.add(torsoMesh);
 
     // Neck → head.
     const neck = this._joint(torso, 0, P.torso, 0);
@@ -168,8 +181,17 @@ export class Athlete {
   /** Relaxed standing pose. */
   applyIdle() {
     this._zero();
-    this.joints.armL.elbow.rotation.z = 0.2;
-    this.joints.armR.elbow.rotation.z = 0.2;
+    const j = this.joints;
+    // Arms hang slightly away from the body (abducted) with a soft elbow bend,
+    // and a touch of asymmetry so the stance doesn't read as a rigid mannequin.
+    j.armL.shoulder.rotation.x = -0.13; // left arm splayed out a hair
+    j.armR.shoulder.rotation.x = 0.16; // right arm splayed a little more
+    j.armL.shoulder.rotation.z = 0.07; // soft forward hang
+    j.armR.shoulder.rotation.z = 0.1;
+    j.armL.elbow.rotation.z = 0.18;
+    j.armR.elbow.rotation.z = 0.26;
+    j.torso.rotation.z = -0.04; // barely-there easy lean
+    j.head.rotation.y = 0.12; // glance slightly to one side
     this.root.position.y = 0;
   }
 
@@ -200,13 +222,14 @@ export class Athlete {
    */
   applyRun(phase, amp = 1) {
     const j = this.joints;
+    this._zero(); // clear any leftover axes from a prior pose (idle/celebrate)
     this._legPose(j.legR, phase, amp);
     this._legPose(j.legL, phase + Math.PI, amp);
     this._armPose(j.armR, phase + Math.PI, amp);
     this._armPose(j.armL, phase, amp);
 
-    j.torso.rotation.z = -0.2 * amp; // lean into the run
-    j.head.rotation.z = 0.18 * amp; // keep the head level
+    j.torso.rotation.z = -0.28 * amp; // natural forward lean into the run
+    j.head.rotation.z = 0.22 * amp; // counter the lean so the gaze stays level/ahead
   }
 
   _legPose(leg, ph, amp) {
@@ -325,21 +348,57 @@ export class Athlete {
     j.torso.rotation.z = -0.1 + 0.25 * p;
   }
 
-  /** Victory celebration: arms raised in a V with a little bounce. */
+  /**
+   * Goalkeeper dive reach: BOTH arms stretch out together in the direction of the
+   * dive (as a real keeper reaches for the ball), rather than splaying into a V.
+   * The arms go overhead and lean toward the dive side; combined with the body
+   * toppling that way (the event tweens the root's roll), they end up pointing
+   * along the dive. `side` is +1 to dive toward +Z (the rig's local left) or −1
+   * toward −Z.
+   * @param {number} side +1 or −1, the lateral dive direction.
+   */
+  applyDive(side = 1) {
+    this._zero();
+    const j = this.joints;
+    const s = Math.sign(side) || 1;
+
+    // Both arms reach the SAME way (same-sign lean) so they extend toward the
+    // ball together; elbows nearly straight for a full, committed reach.
+    for (const arm of [j.armL, j.armR]) {
+      arm.shoulder.rotation.z = 2.7; // straight up over the head
+      arm.shoulder.rotation.x = 0.55 * s; // lean the reach toward the dive side
+      arm.elbow.rotation.z = 0.05; // arms almost fully extended
+    }
+
+    // Legs trail in a slight split for the airborne, streamlined dive shape.
+    j.legL.hip.rotation.z = 0.25;
+    j.legR.hip.rotation.z = -0.18;
+    j.legL.knee.rotation.z = -0.25;
+    j.legR.knee.rotation.z = -0.5;
+
+    j.torso.rotation.z = -0.12; // a little arch toward the ball
+  }
+
+  /** Victory celebration: arched back, face to the sky, arms in a wide V. */
   applyCelebrate(t) {
     this._zero();
     const j = this.joints;
     const wave = 0.15 * Math.sin(t * 6);
 
+    // Arch back through the spine and lift the chin to the sky. NB: this rig
+    // faces +X with its sagittal plane in X–Y, so a backward arch / head-up tilt
+    // is a positive rotation about Z (a rotation about X would tip it sideways).
+    j.torso.rotation.z = 0.22; // slight backward arch
+    j.head.rotation.z = 0.34; // chin up, looking at the sky
+
     for (const [arm, splay] of [
-      [j.armL, 0.35],
-      [j.armR, -0.35],
+      [j.armL, 0.5],
+      [j.armR, -0.5],
     ]) {
-      arm.shoulder.rotation.z = 2.6 + wave; // raise overhead
-      arm.shoulder.rotation.x = splay; // open into a V
-      arm.elbow.rotation.z = 0.1;
+      arm.shoulder.rotation.z = 2.5 + wave; // raise overhead
+      arm.shoulder.rotation.x = splay; // angle outward into a natural V
+      arm.elbow.rotation.z = 0.12;
     }
-    j.head.rotation.z = -0.1;
   }
 
   dispose() {

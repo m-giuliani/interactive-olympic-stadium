@@ -102,8 +102,8 @@ class Footballer {
         this.root.position.y = 0;
         break;
 
-      case "dive": // hold the gather; the event tweens the root sideways/down
-        a.applyGather();
+      case "dive": // reach toward the dive side; the event tweens the root roll/slide
+        a.applyDive(this.diveSide ?? 1);
         break;
 
       case "idle":
@@ -335,8 +335,9 @@ export class FootballEvent {
   /** Goalkeeper springs sideways toward the shot (procedural, not a clip). */
   _keeperDive(target) {
     const gk = this.keeperB;
-    gk.setState("dive");
     const side = target.z >= gk.root.position.z ? 1 : -1;
+    gk.diveSide = side; // so the dive pose reaches the right way
+    gk.setState("dive");
     const delay = KICK_WINDUP_MS + 100;
     new TWEEN.Tween(gk.root.position, this.tweens)
       .to({ z: gk.root.position.z + side * 2.6, y: 0.45 }, 420)
