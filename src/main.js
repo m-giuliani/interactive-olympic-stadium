@@ -115,7 +115,7 @@ function init() {
   const events = new EventManager({ scene, director, onStatus: hud });
   events
     .register("sprint", (ctx) => new SprintEvent(ctx))
-    .register("longJump", (ctx) => new LongJumpEvent(ctx))
+    .register("longJump", (ctx) => new LongJumpEvent({ ...ctx, pit: longJumpPit }))
     .register("football", (ctx) => new FootballEvent(ctx));
 
   // Ceremony mode (dynamic lights, LED/emissive, bloom, cinematic camera).

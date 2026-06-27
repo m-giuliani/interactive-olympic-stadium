@@ -238,7 +238,7 @@ export class Director {
     // Raw look-ahead offset from the averaged heading...
     const hs = Math.hypot(this._vel.x, this._vel.z); // horizontal speed
     if (hs > 0.2) {
-      const lead = Math.min(hs * 0.45, LEAD_MAX);
+      const lead = Math.min(hs * 0.8, LEAD_MAX);
       this._v2.set((this._vel.x / hs) * lead, 0, (this._vel.z / hs) * lead);
     } else {
       this._v2.set(0, 0, 0); // no clear heading → no lead
@@ -258,9 +258,8 @@ export class Director {
       this._fwd.normalize();
     }
 
-    // Broadcast centres on the subject (operator framing); the tracking cams aim
-    // at the (smoothed) lead point.
-    const aim = this.mode === "broadcast" ? f : this._aim;
+    
+    const aim = this._aim;
 
     const kPos = 1 - Math.exp(-dt * (this.mode === "action" ? 4 : 2.5));
     // Slow, absorbing pan so any residual micro-movement is smoothed out.

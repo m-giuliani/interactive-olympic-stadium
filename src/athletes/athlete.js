@@ -264,36 +264,165 @@ export class Athlete {
   }
 
   /**
-   * Long jump flight, parameterised 0..1 across the arc: an early "sail" (knees
-   * tucked, arms overhead) that morphs into a "reach" (legs extended forward,
-   * arms swinging down) for the landing.
+   * Long-jump take-off plant: the dynamic single-foot board strike. The athlete
+   * does NOT stop — they hit the board at speed off one leg while the free knee
+   * drives high. Plant leg straight down into the board, driving (free) knee
+   * thrust up to horizontal with the shin tucked, torso tall and upright, and
+   * the opposite arm pumped high for the cross-coordinated lift.
+   */
+  applyTakeoffPlant() {
+    this._zero();
+    const j = this.joints;
+
+    // Plant / take-off leg (left): nearly straight, driving down and back into
+    // the board to convert the sprint speed into vertical lift.
+    j.legL.hip.rotation.z = -0.25;
+    j.legL.knee.rotation.z = -0.05;
+    j.legL.ankle.rotation.z = -0.15; // ball of the foot pushing off
+
+    // Driving (free) leg (right): knee thrust high — thigh near horizontal (+X)
+    // with the shin tucked under, the explosive free-leg drive.
+    j.legR.hip.rotation.z = 1.55;
+    j.legR.knee.rotation.z = -1.5;
+    j.legR.ankle.rotation.z = 0.2;
+
+    // Torso tall and upright through the take-off (no forward fold).
+    j.torso.rotation.z = -0.05;
+    j.head.rotation.z = 0.05;
+
+    // Opposite arm (left) pumped high in front; right arm drives back — the
+    // sprinter's cross-coordination that balances the knee drive.
+    j.armL.shoulder.rotation.z = 1.4; // swing up and forward
+    j.armL.elbow.rotation.z = 1.4; // sharp bend, hand up by the face
+    j.armR.shoulder.rotation.z = -1.0; // driven back behind the hip
+    j.armR.elbow.rotation.z = 0.4;
+  }
+
+  /**
+   * Long jump flight, parameterised 0..1 across the arc, built from three
+   * keyframes so it flows seamlessly out of the take-off and into the landing:
+   *
+   *   K0 (p=0)    — EXACTLY the end of applyTakeoffPlant(): plant (left) leg
+   *                 trailing straight back, free (right) knee driven high, arms
+   *                 in sprint cross-coordination. No snap leaving the board.
+   *   K1 (p≈0.45) — the "sail"/gather: the trailing leg sweeps forward and the
+   *                 driving knee drops so both legs tuck together under the body,
+   *                 while the arms swing up overhead.
+   *   K2 (p=1)    — the "reach": both legs extend fully forward (knees straight,
+   *                 toes up) and the arms swing down — EXACTLY the first frame of
+   *                 applySandLanding(), so the landing is seamless too.
+   *
+   * Each channel is smoothstep-interpolated K0→K1 then K1→K2; the matched zero
+   * derivatives at the 0.45 seam keep the motion C¹-smooth (no visible kink).
    * @param {number} p flight progress, 0 (takeoff) → 1 (landing).
    */
   applyFlight(p) {
     this._zero();
     const j = this.joints;
-    const reach = THREE.MathUtils.smoothstep(p, 0.45, 1.0); // 0 early → 1 late
+    const lerp = THREE.MathUtils.lerp;
+    const gather = THREE.MathUtils.smoothstep(p, 0, 0.45); // 0 at board → 1 sail
+    const reach = THREE.MathUtils.smoothstep(p, 0.45, 1); // 0 at sail → 1 land
 
-    const hipFlex = 0.6 + 1.0 * reach; // thighs swing up/forward for the reach
-    const kneeBend = -(1.2 * (1 - reach) + 0.1); // tucked early, straight late
+    // Piecewise channel value across the two eased segments (K0→K1→K2).
+    const seg = (k0, k1, k2) =>
+      p < 0.45 ? lerp(k0, k1, gather) : lerp(k1, k2, reach);
+
+    // Left leg (take-off/plant leg): trailing back → tucked → extended forward.
+    j.legL.hip.rotation.z = seg(-0.25, 0.6, 1.5);
+    j.legL.knee.rotation.z = seg(-0.05, -1.4, -0.12);
+    j.legL.ankle.rotation.z = seg(-0.15, 0.2, 0.45);
+
+    // Right leg (drive leg): knee high → tucked → extended forward.
+    j.legR.hip.rotation.z = seg(1.55, 0.65, 1.42);
+    j.legR.knee.rotation.z = seg(-1.5, -1.4, -0.12);
+    j.legR.ankle.rotation.z = seg(0.2, 0.2, 0.45);
+
+    // Torso & head: tall/upright → slight arch → reclined for the seated landing.
+    j.torso.rotation.z = seg(-0.05, 0.05, 0.2);
+    j.head.rotation.z = seg(0.05, 0.1, 0.12);
+
+    // Left arm: pumped high in front → overhead → down/forward & splayed out.
+    j.armL.shoulder.rotation.z = seg(1.4, 2.4, -1.2);
+    j.armL.shoulder.rotation.x = seg(0, 0.2, 0.5);
+    j.armL.elbow.rotation.z = seg(1.4, 0.2, 0.3);
+
+    // Right arm: driven back → overhead → down/forward & splayed out.
+    j.armR.shoulder.rotation.z = seg(-1.0, 2.4, -1.2);
+    j.armR.shoulder.rotation.x = seg(0, -0.2, -0.5);
+    j.armR.elbow.rotation.z = seg(0.4, 0.2, 0.3);
+  }
+
+  /**
+   * Sand landing: the classic long-jump finish where the athlete sits down in
+   * the pit on their glutes, both legs thrust forward and nearly straight,
+   * torso reclined a touch and arms braced out to the sides for balance. The
+   * whole rig is dropped so the hips settle into the sand at ground level.
+   */
+  applySandLanding() {
+    this._zero();
+    const j = this.joints;
+
+    // Legs swing forward to ~horizontal (hip ≈ 90°), knees almost straight,
+    // heels leading with the toes up — reaching the feet out for distance.
     for (const leg of [j.legL, j.legR]) {
-      leg.hip.rotation.z = hipFlex;
-      leg.knee.rotation.z = kneeBend;
-      leg.ankle.rotation.z = 0.2 + 0.3 * reach;
+      leg.hip.rotation.z = 1.5; // thigh forward to horizontal (+X)
+      leg.knee.rotation.z = -0.12; // extended, just a hair of bend
+      leg.ankle.rotation.z = 0.45; // toes up, heels first
     }
-    j.legR.hip.rotation.z = hipFlex * 0.92; // slight asymmetry
+    j.legR.hip.rotation.z = 1.42; // slight asymmetry so it isn't mechanical
 
-    const armAngle = 2.4 * (1 - reach) + 0.5 * reach; // overhead → forward/down
+    // Recline back onto the seat and keep the chin up out of the sand.
+    j.torso.rotation.z = 0.2;
+    j.head.rotation.z = 0.12;
+
+    // Arms reach forward and splay to the sides to brace/balance over the legs.
     for (const [arm, splay] of [
-      [j.armL, 0.2],
-      [j.armR, -0.2],
+      [j.armL, 0.5],
+      [j.armR, -0.5],
     ]) {
-      arm.shoulder.rotation.z = armAngle;
-      arm.shoulder.rotation.x = splay * (1 - reach);
-      arm.elbow.rotation.z = 0.2;
+      arm.shoulder.rotation.z = -1.2; // swing forward toward the feet
+      arm.shoulder.rotation.x = splay; // spread out to the sides for balance
+      arm.elbow.rotation.z = 0.3;
     }
 
-    j.torso.rotation.z = -0.1 + 0.5 * reach; // arch back, then fold for landing
+    // Drop the hips into the sand (pelvis pivot from ~0.98 m down to ground).
+    this.root.position.y = -0.72;
+  }
+
+  /**
+   * Rising out of the sand, parameterised 0..1: blends the seated sand-landing
+   * pose (p=0) up into a standing crouch (p=1), lifting the hips back to height,
+   * so the athlete pushes up to their feet before walking off.
+   * @param {number} p get-up progress, 0 (seated) → 1 (standing).
+   */
+  applyGetUp(p) {
+    this._zero();
+    const j = this.joints;
+    const e = THREE.MathUtils.smoothstep(p, 0, 1);
+
+    // Legs swing down from horizontal and tuck under into a stand-up crouch.
+    const hip = THREE.MathUtils.lerp(1.5, 0.3, e);
+    const knee = THREE.MathUtils.lerp(-0.12, -0.6, e);
+    const ankle = THREE.MathUtils.lerp(0.45, 0.2, e);
+    for (const leg of [j.legL, j.legR]) {
+      leg.hip.rotation.z = hip;
+      leg.knee.rotation.z = knee;
+      leg.ankle.rotation.z = ankle;
+    }
+
+    // Torso folds forward over the knees as the hips lift off the sand.
+    j.torso.rotation.z = THREE.MathUtils.lerp(0.2, -0.2, e);
+    j.head.rotation.z = THREE.MathUtils.lerp(0.12, 0, e);
+
+    // Arms come down from the brace to push off / swing by the sides.
+    for (const arm of [j.armL, j.armR]) {
+      arm.shoulder.rotation.z = THREE.MathUtils.lerp(-1.2, -0.25, e);
+      arm.shoulder.rotation.x = 0;
+      arm.elbow.rotation.z = THREE.MathUtils.lerp(0.3, 0.2, e);
+    }
+
+    // Lift the hips back up to standing height.
+    this.root.position.y = THREE.MathUtils.lerp(-0.72, 0, e);
   }
 
   /**
