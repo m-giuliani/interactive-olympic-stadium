@@ -45,7 +45,7 @@ export const BOWL_TOP_HEIGHT = 28;
 // gap comfortably fits the 1.4 m runway and 3 m pit (centred in the ring).
 export const LJ_Z = TRACK_OUTER_RADIUS + BOWL_GAP / 2; // ≈ 48.76
 export const LJ_RUNWAY_START_X = -20;
-export const LJ_BOARD_X = 6;
+export const LJ_BOARD_X = 4;
 export const LJ_PIT_START_X = 6;
 export const LJ_PIT_END_X = 20;
 export const LJ_RUNWAY_WIDTH = 1.4;

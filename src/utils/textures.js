@@ -301,3 +301,178 @@ export function makeFinishLineTexture(laneCount = 8, aspect = 0.225) {
   tex.wrapT = THREE.ClampToEdgeWrapping;
   return tex;
 }
+
+/**
+ * Long-jump runway: brick-red surface with a white take-off line PAINTED into it
+ * (not a separate mesh). linePos is 0..1 along the run direction (U); 1 = the sand
+ * end. Put the line a bit back from the sand so red runway still shows in front.
+ */
+export function makeLongJumpRunwayTexture(linePos = 0.82) {
+  const w = 1024;            // U = running direction (X)
+  const h = 128;             // V = width (Z)
+  const canvas = makeCanvas(w, h);
+  const ctx = canvas.getContext("2d");
+
+  // Brick-red base — same colour the old material used.
+  ctx.fillStyle = "#a8402b";
+  ctx.fillRect(0, 0, w, h);
+
+  // White take-off line: a thin vertical stripe across the full width. Clamp so
+  // the full line still renders when linePos sits right at the edge (≈1).
+  const lineW = Math.round(w * 0.012);          // ~thickness of the line
+  const lineX = Math.min(
+    Math.max(Math.round(w * linePos - lineW / 2), 0),
+    w - lineW,
+  );
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(lineX, 0, lineW, h);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = ANISOTROPY;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  return tex;
+}
+
+/**
+ * Olympic measuring scale: a dark graduated distance rail for the long-jump pit,
+ * numbered in metres from the take-off board. startDist/endDist are the distances
+ * (m) at the two ends of the rail along the run direction (X = the U axis, so the
+ * span endDist-startDist is also the rail's real length in metres).
+ *
+ * Whole metres get a long white tick + a bold number; half-metres get a short
+ * thin tick. The rail is long and thin, so the canvas is far denser in Z than in
+ * X — left as-is the glyphs would render stretched wide, so each number is
+ * pre-squashed horizontally by the texel-aspect ratio (uses RAIL_WIDTH_M, which
+ * must match the mesh's Z-width). It is also drawn mirrored (scale -1 in X) so it
+ * reads upright from the INFIELD/camera side (smaller Z), where the box top
+ * face's U↔+X mapping appears horizontally flipped.
+ *
+ * @returns {THREE.CanvasTexture}
+ */
+export function makeLongJumpScaleTexture(startDist, endDist) {
+  const w = 4096; // U = running direction (X); wide so the numbers stay crisp
+  const h = 96; // V = rail width (Z)
+  const RAIL_WIDTH_M = 0.2; // must match the scale rail mesh's Z-width
+  const canvas = makeCanvas(w, h);
+  const ctx = canvas.getContext("2d");
+
+  const span = endDist - startDist;
+  const xOf = (d) => ((d - startDist) / span) * w;
+
+  // Dark "official measurement board" background.
+  ctx.fillStyle = "#1c222c";
+  ctx.fillRect(0, 0, w, h);
+
+  // Pre-squash factor so numbers read proportional once stretched along the rail:
+  // (Z metres/px) / (X metres/px). X is the sparser axis, so sx < 1 narrows glyphs.
+  const sx = (RAIL_WIDTH_M / h) / (span / w);
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const font = `bold ${Math.round(h * 0.42)}px Arial, sans-serif`;
+  const numY = Math.round(h * 0.72); // numbers sit on the viewer (−Z) side
+  const tickW = Math.max(2, Math.round(w * 0.0009));
+
+  // Ticks every half metre; whole metres get the long tick + the number.
+  const first = Math.ceil(startDist * 2) / 2; // first half-metre at/after startDist
+  for (let d = first; d <= endDist + 1e-6; d += 0.5) {
+    const x = xOf(d);
+    const whole = Math.abs(d - Math.round(d)) < 1e-6;
+    if (whole) {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(Math.round(x - tickW / 2), 0, tickW, Math.round(h * 0.5));
+      // Skip numbers that would clip at the very edges of the rail.
+      if (x > 40 && x < w - 40) {
+        ctx.save();
+        ctx.translate(x, numY);
+        ctx.scale(-sx, 1); // mirror for the infield side + squash to proportion
+        ctx.fillStyle = "#ffffff";
+        ctx.font = font;
+        ctx.fillText(String(Math.round(d)), 0, 0);
+        ctx.restore();
+      }
+    } else {
+      ctx.fillStyle = "#9aa3b1";
+      ctx.fillRect(Math.round(x - tickW / 2 + 0.5), 0, Math.max(1, tickW - 2), Math.round(h * 0.3));
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = ANISOTROPY;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  return tex;
+}
+
+/**
+ * OMEGA-style long-jump LED measurement board face: a deep-blue glowing display
+ * with big bold white metre numbers and a dashed "dotted scale" running along
+ * the top and bottom edges. Used as an emissiveMap so it blooms under the
+ * post-processing (like the LED ribbon). startDist/endDist are the distances (m)
+ * at the two ends; the span is the board's real width in metres (= U axis).
+ *
+ * The board face points −Z (toward the infield camera) and the mesh is built
+ * with rotation.x = PI + tex.flipY = false to keep the numbers upright; for that
+ * viewer world +X is to the LEFT, so each glyph is drawn mirrored (scale -1 in X)
+ * to read correctly, and pre-squashed to stay proportional on the wide face.
+ *
+ * @returns {THREE.CanvasTexture}
+ */
+export function makeLongJumpBoardTexture(startDist, endDist) {
+  const w = 4096; // U = run direction (X)
+  const h = 256; // V = board height (Y)
+  const FACE_HEIGHT_M = 0.48; // must match the LED face mesh height
+  const canvas = makeCanvas(w, h);
+  const ctx = canvas.getContext("2d");
+
+  const span = endDist - startDist;
+  const xOf = (d) => ((d - startDist) / span) * w;
+
+  // Deep blue LED background — a subtle vertical gradient.
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, "#0e2f9e");
+  grad.addColorStop(1, "#1846d8");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+
+  // Dashed dotted scale along the top and bottom edges; whole metres get a
+  // taller, brighter dash, half metres a shorter dimmer one.
+  const firstHalf = Math.ceil(startDist * 2) / 2;
+  for (let d = firstHalf; d <= endDist + 1e-6; d += 0.5) {
+    const whole = Math.abs(d - Math.round(d)) < 1e-6;
+    const dh = whole ? Math.round(h * 0.16) : Math.round(h * 0.08);
+    const dw = whole ? Math.max(3, Math.round(w * 0.0012)) : Math.max(2, Math.round(w * 0.0008));
+    ctx.fillStyle = whole ? "#ffffff" : "rgba(255,255,255,0.7)";
+    const x = Math.round(xOf(d) - dw / 2);
+    ctx.fillRect(x, 0, dw, dh); // top edge
+    ctx.fillRect(x, h - dh, dw, dh); // bottom edge
+  }
+
+  // Big bold white metre numbers, centred in the band.
+  const sx = (FACE_HEIGHT_M / h) / (span / w); // squash so glyphs stay proportional
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const font = `bold ${Math.round(h * 0.62)}px Arial, sans-serif`;
+  for (let d = Math.ceil(startDist); d <= endDist + 1e-6; d += 1) {
+    const x = xOf(d);
+    if (x <= 70 || x >= w - 70) continue; // skip numbers clipping the edges
+    ctx.save();
+    ctx.translate(x, h * 0.5);
+    ctx.scale(-sx, 1); // mirror for the −Z face + squash to proportion
+    ctx.fillStyle = "#ffffff";
+    ctx.font = font;
+    ctx.fillText(String(d), 0, 0);
+    ctx.restore();
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.flipY = false; // face plane is rotation.x = PI; keeps the numbers upright
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = ANISOTROPY;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  return tex;
+}

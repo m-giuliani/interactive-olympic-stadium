@@ -2,7 +2,7 @@ import * as THREE from "three";
 import * as TWEEN from "tween";
 
 import { Athlete } from "../athletes/athlete.js";
-import { LJ_Z, LJ_BOARD_X, LJ_PIT_END_X } from "../stadium/config.js";
+import { LJ_Z, LJ_BOARD_X, LJ_PIT_START_X, LJ_PIT_END_X } from "../stadium/config.js";
 
 /**
  * The long jump competition — 8 athletes queueing (CLAUDE.md §8).
@@ -43,6 +43,15 @@ const LEAVE_MS = 3800; // chill walk on to the finished cluster
 const SCOREBOARD_MS = 3500; // pause for official measurement before the next jumper
 const GETUP_S = 1.1; // seconds spent pushing up out of the sand
 const SAND_SINK_S = 0.22; // seconds for the body to settle (sink) into the sand
+
+// Heel-strike marks. The heels bite a leg-length AHEAD of the pelvis and keep
+// plowing for a short distance as the body decelerates, leaving shallow furrows.
+const HEEL_SKID_DIST = 0.4; // m of forward slide over which the heels keep furrowing
+const HEEL_FWD_MARGIN = 1.5; // m kept clear of the pit's far end (the gouge drags
+//                              ~1.4 m forward of the foot, so clamp to stay off the kerb)
+// Scratch vectors for reading the heel/foot world positions off the rig.
+const _heelL = new THREE.Vector3();
+const _heelR = new THREE.Vector3();
 
 // One full gait cycle (2π of phase) advances the body one stride; tying the
 // phase to the distance ACTUALLY travelled at this ratio keeps the stance foot
@@ -86,6 +95,21 @@ const KITS = [
   { singlet: 0x37474f },
 ];
 
+// Invented athletes for the broadcast overlay (NOT real people), indexed 1:1
+// with KITS. The kit colour doubles as each athlete's colour chip (no flags).
+const ROSTER = [
+  { name: "Diego Marlin", country: "ESP" },
+  { name: "Tomas Reuben", country: "GER" },
+  { name: "Niko Aalto", country: "FIN" },
+  { name: "Marcus Vale", country: "GBR" },
+  { name: "Andre Costa", country: "BRA" },
+  { name: "Yuki Harada", country: "JPN" },
+  { name: "Kwame Osei", country: "GHA" },
+  { name: "Liam Forsberg", country: "SWE" },
+];
+
+const START_LIST_MS = 3500; // broadcast "start list" hold before the first jumper
+
 /**
  * One competitor: an Athlete with a relaxed idle pose for the waiting phases.
  * The athlete currently jumping is driven directly by the event each frame.
@@ -120,9 +144,11 @@ export class LongJumpEvent {
    * @param {{ scene: import("three").Scene,
    *           onStatus?: (text: string) => void,
    *           director?: import("../cameras/director.js").Director,
-   *           pit?: { sand?: { impact: Function, update: Function, reset: Function } } }} ctx
+   *           pit?: { sand?: { impact: Function, update: Function, reset: Function } },
+   *           broadcast?: { showStartList: Function, showCompetitor: Function,
+   *             showResult: Function, showResults: Function, hide: Function } }} ctx
    */
-  constructor({ scene, onStatus, director, pit } = {}) {
+  constructor({ scene, onStatus, director, pit, broadcast } = {}) {
     this.scene = scene;
     this.onStatus = onStatus ?? (() => {});
     this.director = director ?? null;
@@ -131,6 +157,10 @@ export class LongJumpEvent {
     // is owned by the stadium (NOT this event), so we only drive and reset it —
     // never dispose it. See createLongJumpPit().
     this.sand = pit?.sand ?? null;
+
+    // Broadcast scoreboard overlay (start list / lower-third / results). Like the
+    // pit it's a shared singleton owned by main.js — we only drive & hide it.
+    this.broadcast = broadcast ?? null;
 
     this.subjectType = "jumper";
     this.tweens = new TWEEN.Group();
@@ -145,6 +175,9 @@ export class LongJumpEvent {
       scene.add(athlete.root);
       const j = new Jumper(athlete);
       j.index = i;
+      j.name = ROSTER[i].name; // broadcast overlay identity
+      j.country = ROSTER[i].country;
+      j.color = KITS[i].singlet; // kit colour doubles as the overlay colour chip
       this.competitors.push(j);
     }
 
@@ -170,6 +203,7 @@ export class LongJumpEvent {
   reset() {
     this.tweens.removeAll();
     this.sand?.reset(); // flatten any craters and clear leftover splash grains
+    this.broadcast?.hide(); // clear any lingering scoreboard panels
     this.activeState = "idle";
     this.done = false;
     this.t = 0;
@@ -181,6 +215,9 @@ export class LongJumpEvent {
     this.flightDur = 1;
     this.distance = 0;
     this._slideStampX = null;
+    this._footOffsetX = 0; // heel-strike state, set per landing at touchdown
+    this._footZ = this.z;
+    this._landX = 0;
 
     // Winner tracking: the best jump of the competition and who made it. Only
     // this athlete celebrates, and only once the very last jumper has finished.
@@ -212,7 +249,20 @@ export class LongJumpEvent {
   start() {
     if (this.activeState !== "idle" && !this.done) return;
     this.reset();
-    this._beginNext();
+    // Phase A: the broadcast start list, held briefly before the first jumper is
+    // called up (so it actually reads on screen, like a real TV intro).
+    this.broadcast?.showStartList(
+      this.competitors.map((j) => ({
+        rank: j.index + 1,
+        name: j.name,
+        country: j.country,
+        color: j.color,
+      })),
+    );
+    new TWEEN.Tween({ t: 0 }, this.tweens)
+      .to({ t: 1 }, START_LIST_MS)
+      .onComplete(() => this._beginNext())
+      .start();
   }
 
   update(delta) {
@@ -275,6 +325,13 @@ export class LongJumpEvent {
 
   _enterStepUp() {
     const j = this.active;
+    // Phase B: the per-athlete lower-third (name + country + "Attempt 1").
+    this.broadcast?.showCompetitor({
+      index: j.index,
+      name: j.name,
+      country: j.country,
+      color: j.color,
+    });
     const target = new THREE.Vector3(START_X, 0, this.z);
     j.faceDir(target.x - j.root.position.x, target.z - j.root.position.z);
     this._enter("stepUp", `Athlete ${j.index + 1} — up next`);
@@ -327,6 +384,11 @@ export class LongJumpEvent {
     this.finished.push(j);
 
     this.sand?.reset();
+    // Snap the board's green result line to the just-measured distance.
+    this.sand?.setMark(this.distance);
+    // Record the result and flash it in the lower-third (phase B → result).
+    j.result = this.distance;
+    this.broadcast?.showResult(this.distance.toFixed(2) + " m");
 
     // Realistic broadcast beat: hold on the just-finished athlete while the
     // officials "measure" and the scoreboard updates, before calling the next
@@ -355,6 +417,21 @@ export class LongJumpEvent {
     } else {
       this.onStatus("Competition over 🏁");
     }
+
+    // Phase C: the sorted results table, best jump first, winner highlighted.
+    const ranked = [...this.competitors].sort(
+      (a, b) => (b.result ?? 0) - (a.result ?? 0),
+    );
+    this.broadcast?.showResults(
+      ranked.map((j, i) => ({
+        rank: i + 1,
+        name: j.name,
+        country: j.country,
+        color: j.color,
+        distanceText: (j.result ?? 0).toFixed(2) + " m",
+        isWinner: i === 0,
+      })),
+    );
   }
 
   // --- active-athlete frame driver (jump kinematics, hand-written) -----------
@@ -404,22 +481,32 @@ export class LongJumpEvent {
         root.position.x += this.vx * dt;
         const y = this.vy * this.flightT - 0.5 * G * this.flightT * this.flightT;
 
-        const timeLeft = this.flightDur - this.flightT;
+        // const timeLeft = this.flightDur - this.flightT;
         
 
-        if (timeLeft < 0.2) {
-            root.position.y = THREE.MathUtils.lerp(Math.max(0, y), 0, (0.2 - timeLeft) / 0.2);
-        } else {
-            root.position.y = Math.max(0, y);
-        }
+        // if (timeLeft < 0.2) {
+        //     root.position.y = THREE.MathUtils.lerp(Math.max(0, y), 0, (0.2 - timeLeft) / 0.2);
+        // } else {
+        //     root.position.y = Math.max(0, y);
+        // }
+        const seat = THREE.MathUtils.smoothstep(p, 0.45, 1);
+        root.position.y = Math.max(0, y) - 0.72 * seat;
 
         a.applyFlight(p);
 
         if (this.flightT >= this.flightDur) {
-          // Touchdown: dent the sand and kick up a splash at the landing spot.
-          // Strength scales with horizontal speed so a faster, longer jump digs
-          // a deeper crater and throws more grains.
-          this.sand?.impact(root.position.x, root.position.z, this.vx / 7);
+          // Foot contact: the heels bite FIRST, a leg-length AHEAD of the pelvis.
+          // Read the actual foot position off the rig (so it tracks the seated
+          // pose and the model's proportions) and carve shallow furrows + a small
+          // forward kick THERE. The deep body crater forms later, back at the
+          // pelvis, in the land state — so the two marks separate naturally and in
+          // the right order (feet bite, then the body sits back).
+          this._landStrength = THREE.MathUtils.clamp(this.vx / 7, 0.4, 1.6);
+          const heel = this._heelCenter();
+          this._footOffsetX = heel.x - root.position.x; // feet lead the pelvis by this
+          this._footZ = heel.z;
+          this._landX = root.position.x;
+          this._heelStrikeAt(heel.x, heel.z, 0.5, 0.4); // shallow furrows + small puff
 
           this.distance = root.position.x - this.boardX;
           // Record the leader of the competition (the eventual celebrant).
@@ -442,11 +529,33 @@ export class LongJumpEvent {
         while (root.position.x - this._slideStampX > 0.12) {   // every 12 cm
           this._slideStampX += 0.12;
           this.sand?.impact(this._slideStampX, root.position.z, 0.5);  // light stamps
+          // Heel skid: the feet keep plowing forward a moment as the body
+          // decelerates — extend the furrows ahead (very shallow, furrow only, no
+          // extra splash) for the first HEEL_SKID_DIST of the slide.
+          if (this._slideStampX - this._landX < HEEL_SKID_DIST) {
+            this._heelStrikeAt(this._slideStampX + this._footOffsetX, this._footZ, 0.3, 0);
+          }
         }
 
+        // a.applySandLanding();
+        // const sink = THREE.MathUtils.smoothstep(this.t, 0, SAND_SINK_S);
+        // root.position.y = THREE.MathUtils.lerp(0, -0.72, sink);
+
+        // // Big eruption: once, when the seat has driven into the sand (sink past
+        // // halfway). This is the main burst — a broad body crater and a thick
+        // // sheet of sand thrown up right where the athlete crashes in.
+        // if (!this._bodySplashed && sink > 0.5) {
+        //   this._bodySplashed = true;
+        //   this.sand?.impact(root.position.x, root.position.z, this._landStrength * 1.35);
+        // }
         a.applySandLanding();
-        const sink = THREE.MathUtils.smoothstep(this.t, 0, SAND_SINK_S);
-        root.position.y = THREE.MathUtils.lerp(0, -0.72, sink);
+        root.position.y = -0.72;
+
+        if (!this._bodySplashed) {
+          this._bodySplashed = true;
+          this.sand?.impact(root.position.x, root.position.z, this._landStrength * 1.35);
+        }
+
         if (this.t > 0.7) this._enter("react", `🏅 ${this.distance.toFixed(2)} m!`);
         break;
       }
@@ -488,7 +597,41 @@ export class LongJumpEvent {
     this.t = 0;
 
     this._slideStampX = null;
+    this._bodySplashed = false; // re-arm the body-crash eruption for each landing
     if (status) this.onStatus(status);
+  }
+
+  /**
+   * World-space midpoint of the two heels, read live off the rig (the ankle pivot
+   * carries the foot box). Used to place the heel furrows where the feet actually
+   * are — a leg-length ahead of the pelvis in the seated landing pose — instead
+   * of at root.position, so the furrow tracks the pose and model proportions.
+   * @returns {{ x: number, z: number }}
+   */
+  _heelCenter() {
+    const j = this.active.athlete.joints;
+    j.legL.ankle.getWorldPosition(_heelL); // forces a fresh world matrix
+    j.legR.ankle.getWorldPosition(_heelR);
+    return {
+      x: (_heelL.x + _heelR.x) / 2,
+      z: (_heelL.z + _heelR.z) / 2,
+    };
+  }
+
+  /**
+   * Carve the shallow two-furrow heel mark at (x,z). The forward X is clamped to
+   * the pit so the furrow — which the gouge drags ~1.4 m forward of the foot —
+   * never runs into the kerb/apron at the far end (depth is capped elsewhere, so
+   * this is just to keep the furrows on the sand visually).
+   * @param {number} splashScale 0 = furrow only; >0 also kicks a small forward puff.
+   */
+  _heelStrikeAt(x, z, strength, splashScale) {
+    const cx = THREE.MathUtils.clamp(
+      x,
+      LJ_PIT_START_X + 0.4,
+      LJ_PIT_END_X - HEEL_FWD_MARGIN,
+    );
+    this.sand?.impact(cx, z, strength, { heels: true, splashScale });
   }
 
   /** Remove all athletes from the scene and free all GPU resources. */
@@ -498,6 +641,9 @@ export class LongJumpEvent {
     // disposed there) — we only restore it to a clean, flat state on teardown so
     // the next event doesn't inherit this competition's craters or stray grains.
     this.sand?.reset();
+    // The broadcast overlay is a shared singleton (owned by main.js) — just hide
+    // it so switching sports clears the panels (don't dispose its DOM).
+    this.broadcast?.hide();
     for (const j of this.competitors) {
       this.scene?.remove(j.root);
       j.athlete.dispose();

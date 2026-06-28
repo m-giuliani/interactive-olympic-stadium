@@ -19,6 +19,7 @@ import { LongJumpEvent } from "./events/longJump.js";
 import { FootballEvent } from "./events/football.js";
 import { EventManager } from "./events/eventManager.js";
 import { Ceremony } from "./events/ceremony.js";
+import { createBroadcastOverlay } from "./ui/broadcast.js";
 import { Director } from "./cameras/director.js";
 import { createGUI } from "./ui/gui.js";
 
@@ -90,6 +91,9 @@ function init() {
   );
 
   const hud = makeHud();
+  // Broadcast-style scoreboard overlay for the long jump (start list / lower-third
+  // / results). Built once and passed into the LongJumpEvent like the pit.
+  const broadcast = createBroadcastOverlay();
 
   // Quick keyboard test: 'L' flips Day/Night; 'P' toggles the StadiumPlan debug.
   window.addEventListener("keydown", (e) => {
@@ -115,7 +119,7 @@ function init() {
   const events = new EventManager({ scene, director, onStatus: hud });
   events
     .register("sprint", (ctx) => new SprintEvent(ctx))
-    .register("longJump", (ctx) => new LongJumpEvent({ ...ctx, pit: longJumpPit }))
+    .register("longJump", (ctx) => new LongJumpEvent({ ...ctx, pit: longJumpPit, broadcast }))
     .register("football", (ctx) => new FootballEvent(ctx));
 
   // Ceremony mode (dynamic lights, LED/emissive, bloom, cinematic camera).
