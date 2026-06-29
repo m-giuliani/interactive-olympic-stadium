@@ -2,7 +2,7 @@ import * as THREE from "three";
 import * as TWEEN from "tween";
 
 import { Athlete } from "../athletes/athlete.js";
-import { LJ_Z, LJ_BOARD_X, LJ_PIT_START_X, LJ_PIT_END_X } from "../stadium/config.js";
+import { LJ_Z, LJ_BOARD_X, LJ_PIT_START_X, LJ_PIT_END_X, LJ_PIT_WIDTH } from "../stadium/config.js";
 
 /**
  * The long jump competition — 8 athletes queueing (CLAUDE.md §8).
@@ -39,6 +39,7 @@ const TAKEOFF_PLANT_S = 0.14; // s single-foot board strike (no stopping)
 const COMPETITORS = 8;
 const STEPUP_MS = 4500; // calm walk to the start mark
 const PIT_EXIT_MS = 1800; // climbing forward out of the sand (relaxed pace)
+const ROUND_BOARD_MS = 1500; // rounding the board's far end to the infield side
 const LEAVE_MS = 3800; // chill walk on to the finished cluster
 const SCOREBOARD_MS = 3500; // pause for official measurement before the next jumper
 const GETUP_S = 1.1; // seconds spent pushing up out of the sand
@@ -355,11 +356,18 @@ export class LongJumpEvent {
     const j = this.active;
     this._enter("leave", "");
     this.phase = 0;
+    this._printStride = 0; // re-arm the walk-out footprint trail (one per π of gait)
 
-    // Stage 1: climb forward out of the sand toward the pit's infield corner.
-    const exit = new THREE.Vector3(LJ_PIT_END_X, 0, this.z - 4);
-    // Stage 2: settle at a random spot in the organic "finished" cluster, which
-    // sits beyond the pit (not a line) — facing some natural direction.
+    // The measurement board now stands along the infield (−Z) edge of the pit,
+    // spanning the full pit length in X. So the athlete can't cut straight across
+    // to the finished cluster — they'd walk through it. Route an L around the
+    // board's far (+X) end instead:
+    //   1. climb forward out of the sand, PAST the board end, staying pit-side;
+    //   2. round the corner to the infield side at x beyond the board;
+    //   3. saunter to a random spot in the organic "finished" cluster.
+    const PAST_BOARD_X = LJ_PIT_END_X + 1.8; // clear of the board's far edge (x=20)
+    const exit = new THREE.Vector3(PAST_BOARD_X, 0, this.z);
+    const round = new THREE.Vector3(PAST_BOARD_X, 0, FINISHED.cz);
     const spot = this._randomSpot(FINISHED);
     j._restRot = Math.random() * Math.PI * 2;
 
@@ -368,11 +376,18 @@ export class LongJumpEvent {
       .to({ x: exit.x, z: exit.z }, PIT_EXIT_MS)
       .easing(TWEEN.Easing.Quadratic.Out)
       .onComplete(() => {
-        j.faceDir(spot.x - j.root.position.x, spot.z - j.root.position.z);
+        j.faceDir(round.x - j.root.position.x, round.z - j.root.position.z);
         new TWEEN.Tween(j.root.position, this.tweens)
-          .to({ x: spot.x, z: spot.z }, LEAVE_MS)
+          .to({ x: round.x, z: round.z }, ROUND_BOARD_MS)
           .easing(TWEEN.Easing.Quadratic.InOut)
-          .onComplete(() => this._onLeaveComplete())
+          .onComplete(() => {
+            j.faceDir(spot.x - j.root.position.x, spot.z - j.root.position.z);
+            new TWEEN.Tween(j.root.position, this.tweens)
+              .to({ x: spot.x, z: spot.z }, LEAVE_MS)
+              .easing(TWEEN.Easing.Quadratic.InOut)
+              .onComplete(() => this._onLeaveComplete())
+              .start();
+          })
           .start();
       })
       .start();
@@ -578,6 +593,7 @@ export class LongJumpEvent {
         const amp = THREE.MathUtils.clamp(speed / 2.2, 0.12, 0.5);
         a.applyRun(this.phase, amp);
         root.position.y = 0.025 * amp * Math.abs(Math.sin(this.phase));
+        this._stampWalkFootprints(); // quiet trail while walking out across the sand
         break;
       }
 
@@ -616,6 +632,36 @@ export class LongJumpEvent {
       x: (_heelL.x + _heelR.x) / 2,
       z: (_heelL.z + _heelR.z) / 2,
     };
+  }
+
+  /**
+   * Leave a quiet trail of shallow footprints while the athlete WALKS OUT across
+   * the sand. One print per foot-plant — every half gait cycle (π of phase) —
+   * placed under whichever ankle is currently lowest (the planted/stance foot),
+   * and only while that foot is actually over the pit. The dimples are far smaller
+   * and shallower than the landing gouges (see sand.footprint) so the exit trail
+   * reads as footsteps, not craters.
+   */
+  _stampWalkFootprints() {
+    const stride = Math.floor(this.phase / Math.PI);
+    if (stride === this._printStride) return; // same foot still down — one print only
+    this._printStride = stride;
+
+    const j = this.active.athlete.joints;
+    j.legL.ankle.getWorldPosition(_heelL); // fresh world matrices
+    j.legR.ankle.getWorldPosition(_heelR);
+    const foot = _heelL.y <= _heelR.y ? _heelL : _heelR; // the lower foot is planted
+
+    // Only stamp while the foot is over the sand. The x margin keeps the dragged
+    // dimple off the far kerb; the z test keeps it within the pit width.
+    if (
+      foot.x < LJ_PIT_START_X + 0.2 ||
+      foot.x > LJ_PIT_END_X - 0.3 ||
+      Math.abs(foot.z - LJ_Z) > LJ_PIT_WIDTH / 2
+    ) {
+      return;
+    }
+    this.sand?.footprint(foot.x, foot.z, stride * 7.3);
   }
 
   /**

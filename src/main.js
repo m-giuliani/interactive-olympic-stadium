@@ -119,7 +119,10 @@ function init() {
   const events = new EventManager({ scene, director, onStatus: hud });
   events
     .register("sprint", (ctx) => new SprintEvent(ctx))
-    .register("longJump", (ctx) => new LongJumpEvent({ ...ctx, pit: longJumpPit, broadcast }))
+    // Long jump suppresses the white HUD flash text (onStatus no-op): it already
+    // has the professional broadcast scoreboard overlay, so the plain on-screen
+    // captions looked unbroadcast-like and redundant.
+    .register("longJump", (ctx) => new LongJumpEvent({ ...ctx, onStatus: () => {}, pit: longJumpPit, broadcast }))
     .register("football", (ctx) => new FootballEvent(ctx));
 
   // Ceremony mode (dynamic lights, LED/emissive, bloom, cinematic camera).

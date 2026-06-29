@@ -461,7 +461,7 @@ export function makeLongJumpBoardTexture(startDist, endDist) {
     if (x <= 70 || x >= w - 70) continue; // skip numbers clipping the edges
     ctx.save();
     ctx.translate(x, h * 0.5);
-    ctx.scale(-sx, 1); // mirror for the −Z face + squash to proportion
+    ctx.scale(sx, 1); // squash to proportion (no mirror — face points +Z)
     ctx.fillStyle = "#ffffff";
     ctx.font = font;
     ctx.fillText(String(d), 0, 0);
@@ -469,7 +469,7 @@ export function makeLongJumpBoardTexture(startDist, endDist) {
   }
 
   const tex = new THREE.CanvasTexture(canvas);
-  tex.flipY = false; // face plane is rotation.x = PI; keeps the numbers upright
+  tex.flipY = true; // face plane is unrotated (+Z); keeps the numbers upright
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = ANISOTROPY;
   tex.wrapS = THREE.ClampToEdgeWrapping;

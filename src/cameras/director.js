@@ -326,8 +326,9 @@ export class Director {
   _actionDesired(f) {
     switch (this.subjectType) {
       case "jumper":
-        // Side-profile that captures the full flight arc.
-        this._desired.set(f.x, 2.6, f.z - 9);
+        // Side-profile from the stadium (+Z) side that captures the full flight
+        // arc, looking across the pit toward the measurement board's lit face.
+        this._desired.set(f.x, 2.6, f.z + 9);
         break;
 
       case "football": {

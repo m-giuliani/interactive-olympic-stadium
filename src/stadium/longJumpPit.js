@@ -79,6 +79,7 @@ function valueNoise(x, z) {
  *
  * @returns {{ group: THREE.Group,
  *             sand: { impact: (x:number, z:number, strength?:number, opts?:{heels?:boolean}) => void,
+ *                     footprint: (x:number, z:number, seed?:number) => void,
  *                     update: (dt:number) => void,
  *                     reset: () => void,
  *                     setMark: (distanceMeters: number|null) => void },
@@ -155,10 +156,11 @@ disposables.push(runwayGeo, runwayMat, runwayTex);
   disposables.push(kerbGeo, kerbMat);
 
   // --- OMEGA-style LED measurement board (procedural) ------------------------
-  // A tall thin board STANDING behind the pit (+Z edge), its glowing blue LED
-  // face pointing back toward the infield/camera (−Z). Numbered in metres from
-  // the take-off line; the "0" is LJ_BOARD_X, so distances come from config and
-  // stay correct if LJ_BOARD_X moves. A live green line marks the measured jump.
+  // A tall thin board STANDING along the infield (−Z) edge of the pit, its
+  // glowing blue LED face pointing back toward the bowl/broadcast gantry (+Z) so
+  // it reads in the default broadcast view. Numbered in metres from the take-off
+  // line; the "0" is LJ_BOARD_X, so distances come from config and stay correct
+  // if LJ_BOARD_X moves. A live green line marks the measured jump.
   const BOARD_LEN = pitLen; // along X, full pit length
   const BOARD_H = 0.6; // total height
   const BOARD_T = 0.08; // thickness in Z
@@ -169,11 +171,11 @@ disposables.push(runwayGeo, runwayMat, runwayTex);
 
   const boardGroup = new THREE.Group();
   boardGroup.name = "LongJumpBoard";
-  // Just behind the kerb's far edge, inside the apron (well before the bowl).
+  // Just behind the kerb's near (infield) edge, on the −Z side of the pit.
   boardGroup.position.set(
     pitCx,
     BOARD_BASE_Y + BOARD_H / 2,
-    LJ_Z + LJ_PIT_WIDTH / 2 + 0.15,
+    LJ_Z - LJ_PIT_WIDTH / 2 - 0.15,
   );
 
   // Red frame.
@@ -198,8 +200,8 @@ disposables.push(runwayGeo, runwayMat, runwayTex);
     metalness: 0.0,
   });
   const face = new THREE.Mesh(faceGeo, faceMat);
-  face.rotation.x = Math.PI; // normal → −Z, faces the infield/camera
-  face.position.z = -BOARD_T / 2 - 0.002; // 2 mm in front of the frame
+  // Default plane normal is +Z: faces the bowl/broadcast gantry across the pit.
+  face.position.z = BOARD_T / 2 + 0.002; // 2 mm in front of the frame's +Z side
   boardGroup.add(face);
   disposables.push(faceGeo, faceMat, boardTex);
 
@@ -212,7 +214,7 @@ disposables.push(runwayGeo, runwayMat, runwayTex);
     roughness: 0.5,
   });
   const markBar = new THREE.Mesh(markGeo, markMat);
-  markBar.position.z = -BOARD_T / 2 - 0.006; // just in front of the LED face
+  markBar.position.z = BOARD_T / 2 + 0.006; // just in front of the LED face
   markBar.visible = false;
   boardGroup.add(markBar);
   disposables.push(markGeo, markMat);
@@ -322,6 +324,23 @@ disposables.push(runwayGeo, runwayMat, runwayTex);
     }
   }
 
+  // Re-tint the AO and refresh the surface after one or more gouges. Fake AO:
+  // re-tint every top vertex from its FINAL sink depth, so the colour always
+  // matches the current surface (regardless of overlapping gouges). Surface-level
+  // sand stays bright; the deeper it sinks toward MAX_DISP the darker it gets — a
+  // shadowed, damp, compacted hollow the eye reads instantly.
+  function commitSurface() {
+    for (let k = 0; k < topVerts.length; k++) {
+      const i = topVerts[k];
+      const t = Math.min(1, Math.max(0, (topY - posAttr.getY(i)) / MAX_DISP));
+      const shade = 1 - AO_DARK * t;
+      colAttr.setXYZ(i, shade, shade, shade);
+    }
+    colAttr.needsUpdate = true;
+    posAttr.needsUpdate = true;
+    sandGeo.computeVertexNormals(); // shadows/highlights follow the new surface
+  }
+
   function deform(ix, iz, strength, heels = false) {
     if (heels) {
       // Touchdown: two parallel heel furrows, slightly desynced in x and strength
@@ -332,19 +351,18 @@ disposables.push(runwayGeo, runwayMat, runwayTex);
       // Slide: one wider churn stamp; chained every 12 cm it carves the trail.
       gouge(ix, iz, strength, BASE_RX, BASE_RX * 0.55, BASE_RZ * 1.25, 5.7);
     }
-    // Fake AO: re-tint every top vertex from its FINAL sink depth, so the colour
-    // always matches the current surface (regardless of overlapping gouges).
-    // Surface-level sand stays bright; the deeper it sinks toward MAX_DISP the
-    // darker it gets — a shadowed, damp, compacted hollow the eye reads instantly.
-    for (let k = 0; k < topVerts.length; k++) {
-      const i = topVerts[k];
-      const t = Math.min(1, Math.max(0, (topY - posAttr.getY(i)) / MAX_DISP));
-      const shade = 1 - AO_DARK * t;
-      colAttr.setXYZ(i, shade, shade, shade);
-    }
-    colAttr.needsUpdate = true;
-    posAttr.needsUpdate = true;
-    sandGeo.computeVertexNormals(); // shadows/highlights follow the new surface
+    commitSurface();
+  }
+
+  // A single small, shallow shoe-sized dimple left by an athlete WALKING across
+  // the pit (not a landing). Far smaller and shallower than a heel gouge so the
+  // trail reads as quiet footsteps rather than craters. The radii are kept at or
+  // above the sand tessellation (≈0.12 m in x, ≈0.075 m in z) so the dimple
+  // actually resolves on the mesh; `seed` decorrelates successive prints so the
+  // left/right trail doesn't look rubber-stamped.
+  function footprint(ix, iz, seed = 0) {
+    gouge(ix, iz, 0.32, 0.20, 0.13, 0.10, seed); // ~0.4 m long, ~0.2 m wide, a few mm deep
+    commitSurface();
   }
 
   // --- Splash particles (single InstancedMesh, one draw call) ----------------
@@ -551,7 +569,7 @@ disposables.push(runwayGeo, runwayMat, runwayTex);
 
   return {
     group,
-    sand: { impact, update, reset, setMark },
+    sand: { impact, footprint, update, reset, setMark },
     dispose: () => disposables.forEach((d) => d.dispose()),
   };
 }
