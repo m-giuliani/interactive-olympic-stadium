@@ -233,15 +233,37 @@ export class Athlete {
   }
 
   _legPose(leg, ph, amp) {
-    leg.hip.rotation.z = 0.85 * amp * Math.sin(ph);
-    const flex = Math.max(0, Math.sin(ph - 1.2)); // knee flexes during recovery
-    leg.knee.rotation.z = -(0.15 + 1.3 * amp * flex);
-    leg.ankle.rotation.z = 0.25 * amp * Math.sin(ph + 0.5);
+    // The half-cycle the foot is OFF the ground, centred on ph=0. Drives both the
+    // knee fold (foot clearance) and the thigh lift (the knee coming up).
+    const swing = Math.max(0, Math.cos(ph + 0.3)); // 1 at mid-swing, 0 over stance
+
+    // Hip swings the whole leg fore/aft — reaching forward for heel strike (ph≈π/2)
+    // and extending back at toe-off (ph≈3π/2) — PLUS a thigh LIFT through swing so
+    // the knee visibly rises as the leg steps through. The lift is gated by `swing`
+    // (0 over stance), so the planted-foot reach is untouched.
+    leg.hip.rotation.z = 0.85 * amp * Math.sin(ph) + 0.45 * amp * swing;
+
+    // Knee folds the calf up through SWING so the foot LIFTS and clears the ground,
+    // then extends again for the next heel strike. It stays near-straight through
+    // STANCE (ph≈π/2…3π/2) so the planted leg carries the body. (The old gait
+    // flexed the knee during stance instead, so the planted foot dragged and the
+    // swing foot never lifted — the robotic look.) cos² concentrates the bend at
+    // mid-swing and keeps stance crisp; the +0.3 bias starts the lift right after
+    // toe-off.
+    leg.knee.rotation.z = -(0.12 + (0.55 + 0.95 * amp) * swing * swing);
+
+    // Ankle: heel leads on contact (toe-up at ph≈π/2), a firm toe-down push at
+    // toe-off (ph≈3π/2), plus a little toe-up through swing so the toe clears.
+    leg.ankle.rotation.z = 0.32 * amp * Math.sin(ph) + 0.12 * amp * swing;
   }
 
   _armPose(arm, ph, amp) {
-    arm.shoulder.rotation.z = 0.7 * amp * Math.sin(ph);
-    arm.elbow.rotation.z = 1.1 + 0.3 * amp * Math.sin(ph); // ~90° pumping elbow
+    // Shoulders swing fore/aft, opposing the same-side leg. The carried elbow bend
+    // grows STEEPLY with pace (amp³): the arms hang almost straight and relaxed at
+    // a walk — extended, not tense — closing toward a ~90° pump only at a run. A
+    // small flex on the forward drive keeps the swing from looking locked.
+    arm.shoulder.rotation.z = 0.65 * amp * Math.sin(ph);
+    arm.elbow.rotation.z = 0.12 + 1.0 * amp * amp * amp + 0.18 * amp * Math.sin(ph + 0.5);
   }
 
   /**

@@ -308,23 +308,50 @@ export function makeFinishLineTexture(laneCount = 8, aspect = 0.225) {
  * end. Put the line a bit back from the sand so red runway still shows in front.
  */
 export function makeLongJumpRunwayTexture(linePos = 0.82) {
-  const w = 1024;            // U = running direction (X)
-  const h = 128;             // V = width (Z)
+  const w = 2048;            // U = running direction (X)
+  const h = 256;             // V = width (Z)
   const canvas = makeCanvas(w, h);
   const ctx = canvas.getContext("2d");
 
-  // Brick-red base — same colour the old material used.
-  ctx.fillStyle = "#a8402b";
+  // Synthetic Mondo-style track surface: a warm terracotta base, NOT a flat
+  // slab of red. We build it up so the floodlights read a granular rubber
+  // surface — large-scale tonal mottling, then a dense fine EPDM-granule speckle.
+  ctx.fillStyle = "#9a3826";
   ctx.fillRect(0, 0, w, h);
 
+  // Large soft blotches of slightly lighter/darker red so the surface has gentle
+  // tonal variation across its length instead of one uniform colour.
+  for (let i = 0; i < 260; i++) {
+    const x = Math.random() * w;
+    const y = Math.random() * h;
+    const r = 20 + Math.random() * 70;
+    ctx.fillStyle =
+      Math.random() < 0.5 ? "rgba(58,20,12,0.06)" : "rgba(196,98,66,0.06)";
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Fine rubberized speckle — the individual EPDM granules of the track. A mix of
+  // dark, mid and light flecks gives the matte granular look up close.
+  for (let i = 0; i < 60000; i++) {
+    const t = Math.random();
+    if (t < 0.5) ctx.fillStyle = "rgba(64,22,14,0.55)"; // dark grain
+    else if (t < 0.85) ctx.fillStyle = "rgba(150,68,44,0.5)"; // mid grain
+    else ctx.fillStyle = "rgba(214,150,120,0.45)"; // light fleck
+    const s = 0.7 + Math.random() * 1.3;
+    ctx.fillRect(Math.random() * w, Math.random() * h, s, s);
+  }
+
   // White take-off line: a thin vertical stripe across the full width. Clamp so
-  // the full line still renders when linePos sits right at the edge (≈1).
+  // the full line still renders when linePos sits right at the edge (≈1). Drawn
+  // last so it sits crisp on top of the granular surface.
   const lineW = Math.round(w * 0.012);          // ~thickness of the line
   const lineX = Math.min(
     Math.max(Math.round(w * linePos - lineW / 2), 0),
     w - lineW,
   );
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle = "#f3f0ea";
   ctx.fillRect(lineX, 0, lineW, h);
 
   const tex = new THREE.CanvasTexture(canvas);

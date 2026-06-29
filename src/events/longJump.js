@@ -38,9 +38,10 @@ const TAKEOFF_PLANT_S = 0.14; // s single-foot board strike (no stopping)
 // --- choreography ------------------------------------------------------------
 const COMPETITORS = 8;
 const STEPUP_MS = 4500; // calm walk to the start mark
-const PIT_EXIT_MS = 1800; // climbing forward out of the sand (relaxed pace)
-const ROUND_BOARD_MS = 1500; // rounding the board's far end to the infield side
-const LEAVE_MS = 3800; // chill walk on to the finished cluster
+// Constant walking pace for the post-jump exit. Each leave segment's duration is
+// derived from its length (dist / WALK_SPEED) so the athlete holds ONE steady,
+// natural speed the whole way out — no per-waypoint accelerate/decelerate.
+const WALK_SPEED = 1.8; // m/s — a brisk, even walking pace
 const SCOREBOARD_MS = 3500; // pause for official measurement before the next jumper
 const GETUP_S = 1.1; // seconds spent pushing up out of the sand
 const SAND_SINK_S = 0.22; // seconds for the body to settle (sink) into the sand
@@ -365,31 +366,37 @@ export class LongJumpEvent {
     //   1. climb forward out of the sand, PAST the board end, staying pit-side;
     //   2. round the corner to the infield side at x beyond the board;
     //   3. saunter to a random spot in the organic "finished" cluster.
-    const PAST_BOARD_X = LJ_PIT_END_X + 1.8; // clear of the board's far edge (x=20)
+    const PAST_BOARD_X = LJ_PIT_END_X + 1.2; // clear of the board's far edge (x=20)
     const exit = new THREE.Vector3(PAST_BOARD_X, 0, this.z);
     const round = new THREE.Vector3(PAST_BOARD_X, 0, FINISHED.cz);
     const spot = this._randomSpot(FINISHED);
     j._restRot = Math.random() * Math.PI * 2;
 
-    j.faceDir(exit.x - j.root.position.x, exit.z - j.root.position.z);
+    // One steady pace the whole way: constant-speed segments that pass THROUGH the
+    // corners without stopping (Linear easing), easing only into the final spot.
+    this._walkSegment(j, exit, TWEEN.Easing.Linear.None, () => {
+      this._walkSegment(j, round, TWEEN.Easing.Linear.None, () => {
+        this._walkSegment(j, spot, TWEEN.Easing.Quadratic.Out, () =>
+          this._onLeaveComplete(),
+        );
+      });
+    });
+  }
+
+  /**
+   * Walk the athlete to a target at the constant WALK_SPEED: the tween duration is
+   * derived from the distance so every segment moves at the same even pace. Faces
+   * the direction of travel first. Used to chain the post-jump exit walk.
+   */
+  _walkSegment(j, to, easing, onComplete) {
+    const dx = to.x - j.root.position.x;
+    const dz = to.z - j.root.position.z;
+    j.faceDir(dx, dz);
+    const ms = Math.max(200, (Math.hypot(dx, dz) / WALK_SPEED) * 1000);
     new TWEEN.Tween(j.root.position, this.tweens)
-      .to({ x: exit.x, z: exit.z }, PIT_EXIT_MS)
-      .easing(TWEEN.Easing.Quadratic.Out)
-      .onComplete(() => {
-        j.faceDir(round.x - j.root.position.x, round.z - j.root.position.z);
-        new TWEEN.Tween(j.root.position, this.tweens)
-          .to({ x: round.x, z: round.z }, ROUND_BOARD_MS)
-          .easing(TWEEN.Easing.Quadratic.InOut)
-          .onComplete(() => {
-            j.faceDir(spot.x - j.root.position.x, spot.z - j.root.position.z);
-            new TWEEN.Tween(j.root.position, this.tweens)
-              .to({ x: spot.x, z: spot.z }, LEAVE_MS)
-              .easing(TWEEN.Easing.Quadratic.InOut)
-              .onComplete(() => this._onLeaveComplete())
-              .start();
-          })
-          .start();
-      })
+      .to({ x: to.x, z: to.z }, ms)
+      .easing(easing)
+      .onComplete(onComplete)
       .start();
   }
 

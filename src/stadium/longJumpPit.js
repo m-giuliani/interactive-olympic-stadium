@@ -101,16 +101,23 @@ const runwayEndX = LJ_PIT_START_X - KERB_OVERHANG;
 const runwayLen = runwayEndX - LJ_RUNWAY_START_X;       // 26, reaches the sand
 const linePos = (LJ_BOARD_X - LJ_RUNWAY_START_X) / runwayLen; // = 0.923 → clean, mid-texture
 const runwayTex = makeLongJumpRunwayTexture(linePos);
+// Fine granular normal map (reused from the sand) so the floodlights catch the
+// rubberized track surface instead of a flat sheet. Tiled densely along the
+// runway; independent of the colour map's single (clamped) mapping.
+const runwayNormal = makeGrainNormalMap();
+runwayNormal.repeat.set(Math.round(runwayLen * 1.5), 3);
 const runwayGeo = new THREE.BoxGeometry(runwayLen, 0.02, LJ_RUNWAY_WIDTH);
 const runwayMat = new THREE.MeshStandardMaterial({
   map: runwayTex,
-  roughness: 0.85,
+  normalMap: runwayNormal,
+  normalScale: new THREE.Vector2(0.35, 0.35),
+  roughness: 0.92,
 });
 const runway = new THREE.Mesh(runwayGeo, runwayMat);
 runway.position.set(LJ_RUNWAY_START_X + runwayLen / 2, 0.01, LJ_Z);
 runway.receiveShadow = true;
 group.add(runway);
-disposables.push(runwayGeo, runwayMat, runwayTex);
+disposables.push(runwayGeo, runwayMat, runwayTex, runwayNormal);
 
 
   // --- Sand pit (deformable surface) -----------------------------------------
