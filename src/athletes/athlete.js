@@ -552,6 +552,88 @@ export class Athlete {
     }
   }
 
+  /**
+   * Step UP onto a raised surface (a podium block / its access riser),
+   * parameterised 0..1 — the event lifts root.y from the lower level to the
+   * higher one over the same p. Built from three keyframes, smoothstep-blended
+   * like applyFlight, so it flows as one continuous stride:
+   *   K0 (p=0)    — weight on the trailing leg, lead foot about to lift.
+   *   K1 (p≈0.45) — the LEAD knee driven HIGH and folded so the foot lands on the
+   *                 step; torso leaning forward over the lead knee; arms swing.
+   *   K2 (p=1)    — the trailing leg pushes off and rises level; body stands tall.
+   *
+   * `lead` chooses which leg leads (so consecutive steps alternate legs, like a
+   * real climb): +1 = left leg leads, −1 = right. The opposite arm swings with
+   * the lead leg (natural cross-coordination).
+   * @param {number} p    step progress, 0 (lower level) → 1 (on the step).
+   * @param {number} lead +1 (left leads) or −1 (right leads).
+   */
+  applyStepUp(p, lead = 1) {
+    this._zero();
+    const j = this.joints;
+    const lerp = THREE.MathUtils.lerp;
+    const k1 = THREE.MathUtils.smoothstep(p, 0, 0.45);
+    const k2 = THREE.MathUtils.smoothstep(p, 0.45, 1);
+    const seg = (a, b, c) => (p < 0.45 ? lerp(a, b, k1) : lerp(b, c, k2));
+
+    const left = lead >= 0;
+    const leadLeg = left ? j.legL : j.legR;
+    const trailLeg = left ? j.legR : j.legL;
+    const leadArm = left ? j.armR : j.armL; // opposite arm to the lead leg
+    const trailArm = left ? j.armL : j.armR;
+
+    // Lead leg: straight → knee lifted high & folded (foot up onto the step) →
+    // extended to standing as the weight comes over it.
+    leadLeg.hip.rotation.z = seg(0.05, 1.25, 0.05);
+    leadLeg.knee.rotation.z = seg(-0.1, -1.55, -0.05);
+    leadLeg.ankle.rotation.z = seg(0.1, 0.45, 0.0);
+
+    // Trail leg: planted, pushing the body up onto the toes → lifts level.
+    trailLeg.hip.rotation.z = seg(-0.05, -0.4, 0.05);
+    trailLeg.knee.rotation.z = seg(-0.1, -0.25, -0.1);
+    trailLeg.ankle.rotation.z = seg(0.05, 0.3, 0.0);
+
+    // Torso leans forward over the lead knee for the drive, then rises tall.
+    j.torso.rotation.z = seg(-0.15, -0.4, 0.02);
+    j.head.rotation.z = seg(0.12, 0.25, 0.0);
+
+    // Arms: the lead-opposite arm swings forward/up, the other drives back.
+    leadArm.shoulder.rotation.z = seg(0.1, 0.7, 0.1);
+    leadArm.elbow.rotation.z = 0.4;
+    trailArm.shoulder.rotation.z = seg(-0.1, -0.5, -0.1);
+    trailArm.elbow.rotation.z = 0.3;
+  }
+
+  /**
+   * Proud, mostly-still standing pose for the podium — a base for the medalists so
+   * they breathe and shift their weight instead of freezing. Chest lifted a touch,
+   * a slow look around.
+   * @param {number} t time in seconds.
+   */
+  applyPodiumStand(t) {
+    this.applyIdle(); // relaxed stance base (also zeroes the rig)
+    const j = this.joints;
+    const breathe = Math.sin(t * 1.5);
+    j.torso.rotation.z = 0.03 + 0.02 * breathe; // proud, chest up, breathing
+    j.head.rotation.z = 0.06; // chin up a little
+    j.head.rotation.y = 0.15 * Math.sin(t * 0.5); // slow glance around
+  }
+
+  /**
+   * Friendly one-arm wave / fist-pump loop on the podium (silver & bronze use
+   * this; gold reuses the bigger applyCelebrate). Layered over the proud stand.
+   * @param {number} t time in seconds.
+   */
+  applyWave(t) {
+    this.applyPodiumStand(t);
+    const j = this.joints;
+    const w = Math.sin(t * 4);
+    // Right arm raised to the crowd, waving from the elbow.
+    j.armR.shoulder.rotation.z = 2.2; // raised overhead
+    j.armR.shoulder.rotation.x = -0.3; // out to the side a little
+    j.armR.elbow.rotation.z = 0.5 + 0.45 * w; // the wave
+  }
+
   dispose() {
     this._geos.forEach((g) => g.dispose());
     Object.values(this.materials).forEach((m) => m.dispose());
