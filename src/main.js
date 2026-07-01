@@ -136,8 +136,9 @@ function init() {
     onStatus: hud,
   });
 
-  // Start in the default Broadcast view (CLAUDE.md: Broadcast is the default).
-  director.setMode("broadcast");
+  // Start with the exterior Olympic Campus hero shot; sports still reset to
+  // Broadcast through EventManager when an event is launched.
+  director.setMode("campus");
 
   // GUI controls (director mode + sports events + ceremony toggle).
   createGUI({

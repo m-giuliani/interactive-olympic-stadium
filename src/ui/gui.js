@@ -32,6 +32,7 @@ export function createGUI({ events, ceremony, director, lightingManager }) {
   // every event switch, so we keep this dropdown in sync below.
   const camFolder = gui.addFolder("Director");
   const camModes = {
+    "Campus View": "campus",
     "Broadcast TV": "broadcast",
     "Spider-cam": "spider",
     "Action Track": "action",

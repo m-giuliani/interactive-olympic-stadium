@@ -6,6 +6,7 @@ import { createFinishLine } from "./finishLine.js";
 import { createApron } from "./apron.js";
 import { createStands } from "./stands.js";
 import { createExterior } from "./exterior.js";
+import { createExteriorCampus } from "./exteriorCampus.js";
 import { createRoof } from "./roof.js";
 
 /**
@@ -28,6 +29,7 @@ export function createStadium() {
   const apron = createApron();
   const stands = createStands();
   const exterior = createExterior();
+  const exteriorCampus = createExteriorCampus();
   const roof = createRoof();
 
   group.add(field.group);
@@ -36,9 +38,10 @@ export function createStadium() {
   group.add(apron.group);
   group.add(stands.group);
   group.add(exterior.group);
+  group.add(exteriorCampus.group);
   group.add(roof.group);
 
-  const parts = [field, track, finishLine, apron, stands, exterior, roof];
+  const parts = [field, track, finishLine, apron, stands, exterior, exteriorCampus, roof];
 
   return {
     group,

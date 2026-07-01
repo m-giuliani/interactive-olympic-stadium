@@ -9,6 +9,8 @@ import * as THREE from "three";
  * Modes:
  *  - "broadcast" : fixed gantry high in the stand; lerped lookAt with a filmic
  *                  delay (operator reaction time).
+ *  - "campus"    : fixed exterior hero shot framing the +Z Olympic Campus,
+ *                  flag avenue, plaza, and stadium entrance.
  *  - "spider"    : flies along a Catmull-Rom spline high above the field, always
  *                  looking down at the subject at roughly constant distance.
  *  - "action"    : sport-specific rail cam — runner dolly, jumper side-profile,
@@ -21,6 +23,8 @@ import * as THREE from "three";
  */
 
 const BROADCAST_POS = new THREE.Vector3(0, 20, 80); // gantry in the main stand
+const CAMPUS_POS = new THREE.Vector3(0, 55, 245);
+const CAMPUS_TARGET = new THREE.Vector3(0, 8, 105);
 const SPIDER_HEIGHT = 48;
 const SPIDER_TRAIL = 8; // how far the spider-cam trails behind the athlete (m)
 const FLY_SPEED = 32; // m/s for WASD movement
@@ -211,6 +215,16 @@ export class Director {
       // Aim low (pitch level) so the elevated camera is angled down and centred.
       this.camera.lookAt(0, 2, 0);
       this._updateDof(this._v1.set(0, 2, 0));
+      return;
+    }
+
+    if (this.mode === "campus") {
+      const kPos = 1 - Math.exp(-dt * 2.2);
+      const kLook = 1 - Math.exp(-dt * 2.0);
+      this.camera.position.lerp(CAMPUS_POS, kPos);
+      this._focus.lerp(CAMPUS_TARGET, kLook);
+      this.camera.lookAt(this._focus);
+      this._updateDof(CAMPUS_TARGET);
       return;
     }
 
